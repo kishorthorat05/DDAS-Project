@@ -1,0 +1,744 @@
+<!-- 
+    Duplicate File Detector & Display Component
+    Displays duplicate files with their locations, sizes, and storage savings
+    Integration: Include in main HTML and call DuplicateDetector.init()
+-->
+
+<div id="duplicate-detector-container" class="duplicate-detector-module" style="display: none;">
+    <style>
+        .duplicate-detector-module {
+            max-width: 1200px;
+            margin: 20px auto;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+        }
+
+        .detector-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px 8px 0 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .detector-header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .detector-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .detector-button {
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .detector-button:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .detector-button.primary {
+            background: #fff;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .detector-button.primary:hover {
+            background: #f5f5f5;
+        }
+
+        .statistics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #999;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .stat-unit {
+            font-size: 14px;
+            color: #666;
+            margin-left: 5px;
+        }
+
+        .search-section {
+            padding: 20px;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .search-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .search-group input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .search-group button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .search-group button:hover {
+            background: #5568d3;
+        }
+
+        .duplicates-list {
+            padding: 0;
+        }
+
+        .duplicate-group {
+            border-bottom: 1px solid #e0e0e0;
+            padding: 0;
+            margin: 0;
+        }
+
+        .duplicate-group.expanded .duplicate-header {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+        }
+
+        .duplicate-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            cursor: pointer;
+            background: white;
+            transition: all 0.2s;
+            border-left: 4px solid transparent;
+        }
+
+        .duplicate-header:hover {
+            background: #f8f9fa;
+        }
+
+        .duplicate-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex: 1;
+        }
+
+        .duplicate-expand-icon {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+
+        .duplicate-group.expanded .duplicate-expand-icon {
+            transform: rotate(180deg);
+        }
+
+        .duplicate-summary {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex: 1;
+        }
+
+        .duplicate-badge {
+            display: inline-block;
+            background: #ff6b6b;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .duplicate-details {
+            display: flex;
+            gap: 30px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .duplicate-detail-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .duplicate-detail-label {
+            font-size: 11px;
+            color: #999;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .duplicate-detail-value {
+            color: #333;
+            font-weight: 600;
+        }
+
+        .duplicate-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-button {
+            padding: 6px 12px;
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #333;
+            transition: all 0.2s;
+        }
+
+        .action-button:hover {
+            background: #e8e8e8;
+        }
+
+        .action-button.danger {
+            background: #ffe0e0;
+            color: #d9534f;
+            border-color: #d9534f;
+        }
+
+        .action-button.danger:hover {
+            background: #ffc6c6;
+        }
+
+        .duplicate-content {
+            display: none;
+            background: white;
+            padding: 0;
+        }
+
+        .duplicate-group.expanded .duplicate-content {
+            display: block;
+        }
+
+        .file-list {
+            padding: 0;
+            margin: 0;
+            list-style: none;
+        }
+
+        .file-item {
+            display: grid;
+            grid-template-columns: 30px 1fr 100px 100px 80px;
+            gap: 15px;
+            align-items: center;
+            padding: 12px 20px;
+            border-top: 1px solid #f0f0f0;
+            font-size: 13px;
+            background: white;
+        }
+
+        .file-item:hover {
+            background: #fafafa;
+        }
+
+        .file-item.original {
+            background: #f0f7ff;
+            border-top: 2px solid #667eea;
+            padding: 12px 20px;
+        }
+
+        .file-original-badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 700;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: #333;
+            word-break: break-all;
+        }
+
+        .file-path {
+            color: #666;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            word-break: break-all;
+        }
+
+        .file-size {
+            text-align: right;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .file-date {
+            text-align: right;
+            color: #999;
+            font-size: 12px;
+        }
+
+        .file-checkbox {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .empty-state {
+            padding: 40px 20px;
+            text-align: center;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .empty-state-text {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f0f0f0;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .storage-savings {
+            padding: 20px;
+            background: #f0f7ff;
+            border-left: 4px solid #667eea;
+            margin: 20px;
+            border-radius: 4px;
+        }
+
+        .storage-savings h3 {
+            margin: 0 0 10px 0;
+            color: #667eea;
+            font-size: 16px;
+        }
+
+        .savings-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .savings-item {
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid #667eea;
+        }
+
+        .savings-label {
+            font-size: 11px;
+            color: #999;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .savings-value {
+            font-size: 18px;
+            color: #667eea;
+            font-weight: 700;
+            margin-top: 3px;
+        }
+
+        .error-message {
+            padding: 15px 20px;
+            background: #ffe0e0;
+            color: #d9534f;
+            border-left: 4px solid #d9534f;
+            margin: 20px;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .statistics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .file-item {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .duplicate-details {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .detector-header {
+                flex-direction: column;
+                gap: 15px;
+                align-items: flex-start;
+            }
+
+            .detector-controls {
+                width: 100%;
+            }
+        }
+    </style>
+
+    <div class="detector-header">
+        <div>
+            <h1>🔍 Duplicate File Detector</h1>
+        </div>
+        <div class="detector-controls">
+            <button class="detector-button" onclick="DuplicateDetector.refresh()">Refresh</button>
+            <button class="detector-button primary" onclick="DuplicateDetector.scanNow()">Scan Now</button>
+        </div>
+    </div>
+
+    <div class="statistics-grid" id="statistics-grid">
+        <div class="stat-card">
+            <div class="stat-label">Total Files</div>
+            <div class="stat-value"><span id="stat-total-files">-</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Duplicate Files</div>
+            <div class="stat-value"><span id="stat-duplicate-files">-</span> <span class="stat-unit">files</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Duplicate Groups</div>
+            <div class="stat-value"><span id="stat-duplicate-groups">-</span> <span class="stat-unit">groups</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Wasted Storage</div>
+            <div class="stat-value" style="color: #d9534f;"><span id="stat-wasted-storage">-</span> <span class="stat-unit">GB</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Duplication Rate</div>
+            <div class="stat-value"><span id="stat-duplicate-percent">-</span><span class="stat-unit">%</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Storage Efficiency</div>
+            <div class="stat-value"><span id="stat-efficiency">-</span><span class="stat-unit">%</span></div>
+        </div>
+    </div>
+
+    <div class="search-section">
+        <div class="search-group">
+            <input type="text" id="search-file-hash" placeholder="Search by file hash..." style="display: none;">
+            <input type="text" id="search-file-name" placeholder="Search by file name...">
+            <button onclick="DuplicateDetector.searchDuplicates()">Search</button>
+        </div>
+    </div>
+
+    <div class="error-message" id="error-message"></div>
+
+    <div id="duplicates-list" class="duplicates-list">
+        <div class="empty-state">
+            <div class="empty-state-icon">📁</div>
+            <div class="empty-state-text">Loading duplicate information...</div>
+            <div class="loading-spinner"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const DuplicateDetector = {
+        apiBaseUrl: '/api',
+        duplicates: [],
+        statistics: {},
+
+        async init() {
+            const container = document.getElementById('duplicate-detector-container');
+            container.style.display = 'block';
+            await this.load();
+        },
+
+        async load() {
+            try {
+                // Load statistics
+                const statsResponse = await fetch(`${this.apiBaseUrl}/duplicates/statistics`, {
+                    headers: { 'Authorization': `Bearer ${this.getToken()}` }
+                });
+                if (statsResponse.ok) {
+                    const statsData = await statsResponse.json();
+                    this.statistics = statsData.data || {};
+                    this.updateStatistics();
+                }
+
+                // Load duplicates
+                const dupsResponse = await fetch(`${this.apiBaseUrl}/duplicates/all?limit=100`, {
+                    headers: { 'Authorization': `Bearer ${this.getToken()}` }
+                });
+                if (dupsResponse.ok) {
+                    const dupsData = await dupsResponse.json();
+                    this.duplicates = dupsData.data?.duplicates || [];
+                    this.renderDuplicates();
+                }
+            } catch (error) {
+                console.error('Error loading duplicates:', error);
+                this.showError(`Failed to load duplicates: ${error.message}`);
+            }
+        },
+
+        updateStatistics() {
+            const stats = this.statistics;
+            document.getElementById('stat-total-files').textContent = (stats.total_files || 0).toLocaleString();
+            document.getElementById('stat-duplicate-files').textContent = (stats.duplicate_files || 0).toLocaleString();
+            document.getElementById('stat-duplicate-groups').textContent = (stats.duplicate_groups || 0);
+            document.getElementById('stat-wasted-storage').textContent = (stats.potential_savings_gb || 0).toFixed(2);
+            document.getElementById('stat-duplicate-percent').textContent = (stats.duplicate_percentage || 0).toFixed(1);
+            document.getElementById('stat-efficiency').textContent = (100 - (stats.wasted_storage_percentage || 0)).toFixed(1);
+        },
+
+        renderDuplicates() {
+            const list = document.getElementById('duplicates-list');
+            
+            if (!this.duplicates || this.duplicates.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">✅</div>
+                        <div class="empty-state-text">No duplicates found! Your storage is efficiently organized.</div>
+                    </div>
+                `;
+                return;
+            }
+
+            let totalSavings = 0;
+            let html = '';
+
+            this.duplicates.forEach((group, index) => {
+                const copies = group.total_copies || 0;
+                const savings = group.storage_saved_if_deduplicated || 0;
+                totalSavings += savings;
+                const savingsGb = (savings / (1024**3)).toFixed(2);
+
+                html += `
+                    <div class="duplicate-group" data-index="${index}">
+                        <div class="duplicate-header" onclick="DuplicateDetector.toggleGroup(${index})">
+                            <div class="duplicate-expand-icon">▼</div>
+                            <div class="duplicate-info">
+                                <div class="duplicate-summary">
+                                    <span class="duplicate-badge">${copies} copies</span>
+                                    <div class="duplicate-details">
+                                        <div class="duplicate-detail-item">
+                                            <span class="duplicate-detail-label">Original File</span>
+                                            <span class="duplicate-detail-value">${group.original_file?.file_name || 'Unknown'}</span>
+                                        </div>
+                                        <div class="duplicate-detail-item">
+                                            <span class="duplicate-detail-label">Size</span>
+                                            <span class="duplicate-detail-value">${this.formatBytes(group.total_storage_used)}</span>
+                                        </div>
+                                        <div class="duplicate-detail-item">
+                                            <span class="duplicate-detail-label">Can Save</span>
+                                            <span class="duplicate-detail-value" style="color: #d9534f;">${savingsGb} GB</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="duplicate-actions">
+                                <button class="action-button" onclick="DuplicateDetector.showDetails('${group.file_hash}')">View Details</button>
+                            </div>
+                        </div>
+                        <div class="duplicate-content">
+                            <ul class="file-list">
+                                ${this.renderFilesList(group.all_files)}
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html = `
+                <div class="storage-savings">
+                    <h3>💾 Total Storage Savings Potential</h3>
+                    <div class="savings-details">
+                        <div class="savings-item">
+                            <div class="savings-label">Total Duplicates</div>
+                            <div class="savings-value">${this.duplicates.length}</div>
+                        </div>
+                        <div class="savings-item">
+                            <div class="savings-label">Can Save</div>
+                            <div class="savings-value">${(totalSavings / (1024**3)).toFixed(2)} GB</div>
+                        </div>
+                    </div>
+                </div>
+            ` + html;
+
+            list.innerHTML = html;
+        },
+
+        renderFilesList(files) {
+            if (!files) return '';
+            
+            return files.map((file, index) => `
+                <li class="file-item ${index === 0 ? 'original' : ''}">
+                    <div ${index === 0 ? `<span class="file-original-badge">ORIGINAL</span>` : '<input type="checkbox" class="file-checkbox">'}</div>
+                    <div>
+                        <div class="file-name">${file.file_name}</div>
+                        <div class="file-path">${file.file_path}</div>
+                    </div>
+                    <div class="file-size">${this.formatBytes(file.file_size)}</div>
+                    <div class="file-date">${new Date(file.created_at).toLocaleDateString()}</div>
+                </li>
+            `).join('');
+        },
+
+        toggleGroup(index) {
+            const group = document.querySelector(`.duplicate-group[data-index="${index}"]`);
+            group.classList.toggle('expanded');
+        },
+
+        async searchDuplicates() {
+            const searchTerm = document.getElementById('search-file-name').value.trim();
+            if (!searchTerm) {
+                this.load();
+                return;
+            }
+
+            try {
+                const response = await fetch(
+                    `${this.apiBaseUrl}/duplicates/by-name?name=${encodeURIComponent(searchTerm)}`,
+                    { headers: { 'Authorization': `Bearer ${this.getToken()}` } }
+                );
+                if (response.ok) {
+                    const data = await response.json();
+                    this.duplicates = data.data?.duplicates || [];
+                    this.renderDuplicates();
+                }
+            } catch (error) {
+                this.showError(`Search failed: ${error.message}`);
+            }
+        },
+
+        async showDetails(fileHash) {
+            try {
+                const response = await fetch(
+                    `${this.apiBaseUrl}/duplicates/by-hash/${fileHash}`,
+                    { headers: { 'Authorization': `Bearer ${this.getToken()}` } }
+                );
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Duplicate Details:', data.data);
+                    alert(`Found ${data.data.total_copies} copies.\nStorage saved if deduplicated: ${(data.data.storage_saved_if_deduplicated / (1024**3)).toFixed(2)} GB`);
+                }
+            } catch (error) {
+                this.showError(`Failed to load details: ${error.message}`);
+            }
+        },
+
+        async scanNow() {
+            try {
+                const response = await fetch(`${this.apiBaseUrl}/monitor/scan`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.getToken()}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                });
+                if (response.ok) {
+                    alert('Scan completed. Refreshing results...');
+                    await this.load();
+                }
+            } catch (error) {
+                this.showError(`Scan failed: ${error.message}`);
+            }
+        },
+
+        refresh() {
+            this.load();
+        },
+
+        formatBytes(bytes) {
+            if (!bytes) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let size = bytes;
+            let unitIndex = 0;
+            while (size >= 1024 && unitIndex < units.length - 1) {
+                size /= 1024;
+                unitIndex++;
+            }
+            return `${size.toFixed(2)} ${units[unitIndex]}`;
+        },
+
+        showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+            setTimeout(() => errorDiv.classList.remove('show'), 5000);
+        },
+
+        getToken() {
+            // Get token from localStorage or sessionStorage
+            return localStorage.getItem('access_token') || sessionStorage.getItem('access_token') || '';
+        }
+    };
+
+    // Auto-initialize when DOM is ready
+    document.addEventListener('DOMContentLoaded', () => {
+        DuplicateDetector.init();
+    });
+</script>

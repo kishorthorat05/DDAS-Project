@@ -1,0 +1,2232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DDAS — Data Download Duplication Alert System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════
+   DESIGN SYSTEM — Industrial Tech Dark Theme
+   ═══════════════════════════════════════════════ */
+:root {
+  --bg-base:     #0a0c0f;
+  --bg-surface:  #10141a;
+  --bg-raised:   #161c26;
+  --bg-hover:    #1d2535;
+  --border:      #1e2d3d;
+  --border-bright: #2a3f55;
+
+  --accent:      #00d4ff;
+  --accent-dim:  #0090b3;
+  --accent-glow: rgba(0, 212, 255, 0.15);
+  --warning:     #ffb800;
+  --danger:      #ff4c6a;
+  --success:     #00e5a0;
+  --muted:       #3d5266;
+
+  --text-primary:   #e2eaf5;
+  --text-secondary: #7a9ab8;
+  --text-muted:     #3d5266;
+
+  --font-mono:  'Space Mono', monospace;
+  --font-body:  'DM Sans', sans-serif;
+
+  --radius-sm:  4px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+
+  --transition: 160ms cubic-bezier(.4,0,.2,1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbars ───────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 99px; }
+
+/* ── Layout ───────────────────────────────────── */
+.app {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 56px 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Top Bar ──────────────────────────────────── */
+.topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
+}
+.topbar-logo {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 13px; font-weight: 700;
+  color: var(--accent);
+  text-decoration: none;
+  letter-spacing: .04em;
+}
+.topbar-logo .logo-icon {
+  width: 28px; height: 28px;
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+}
+.topbar-logo .logo-icon svg { color: #000; }
+.topbar-spacer { flex: 1; }
+.status-pill {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+}
+.status-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+  animation: pulse 2s infinite;
+}
+.status-dot.offline { background: var(--muted); box-shadow: none; animation: none; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.alert-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  background: var(--danger);
+  color: #fff; font-size: 10px; font-weight: 700;
+  border-radius: 99px;
+  display: none;
+}
+.alert-badge.visible { display: inline-flex; }
+
+.btn-icon {
+  width: 32px; height: 32px; border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: transparent; color: var(--text-secondary);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: var(--transition);
+  position: relative;
+}
+.btn-icon:hover { background: var(--bg-hover); color: var(--accent); border-color: var(--border-bright); }
+
+/* ── Sidebar ──────────────────────────────────── */
+.sidebar {
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+  padding: 16px 0;
+}
+.nav-section {
+  padding: 0 12px 8px;
+  font-family: var(--font-mono);
+  font-size: 9px; letter-spacing: .12em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-top: 16px;
+}
+.nav-section:first-child { margin-top: 0; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+  border-radius: 0;
+  font-size: 13.5px;
+  font-weight: 400;
+  position: relative;
+  user-select: none;
+  border: none; background: none; width: 100%; text-align: left;
+}
+.nav-item::before {
+  content: '';
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 2px; height: 0;
+  background: var(--accent);
+  transition: height var(--transition);
+  border-radius: 0 2px 2px 0;
+}
+.nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.nav-item.active {
+  background: linear-gradient(90deg, rgba(0,212,255,.08) 0%, transparent 100%);
+  color: var(--accent);
+  font-weight: 500;
+}
+.nav-item.active::before { height: 24px; }
+.nav-item .nav-icon { opacity: .7; flex-shrink: 0; }
+.nav-item.active .nav-icon { opacity: 1; }
+.nav-badge {
+  margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px;
+  background: var(--danger); color: #fff;
+  font-size: 10px; font-weight: 700; border-radius: 99px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.sidebar-footer {
+  margin-top: auto; padding: 12px;
+  border-top: 1px solid var(--border);
+}
+.monitor-toggle {
+  width: 100%;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer; font-size: 12px;
+  transition: var(--transition);
+}
+.monitor-toggle:hover { border-color: var(--border-bright); color: var(--text-primary); }
+.monitor-toggle.active { border-color: var(--success); color: var(--success); }
+
+/* ── Main Content ─────────────────────────────── */
+.main {
+  overflow-y: auto;
+  background: var(--bg-base);
+}
+.page { display: none; padding: 28px 28px 60px; }
+.page.active { display: block; }
+
+/* ── Page Headers ─────────────────────────────── */
+.page-header {
+  display: flex; align-items: flex-start; gap: 16px;
+  margin-bottom: 28px;
+}
+.page-header-icon {
+  width: 44px; height: 44px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.page-title {
+  font-family: var(--font-mono);
+  font-size: 18px; font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -.01em;
+}
+.page-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 3px; }
+
+/* ── Stat Cards ───────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+.stat-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  transition: var(--transition);
+}
+.stat-card:hover { border-color: var(--border-bright); }
+.stat-label {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-muted); letter-spacing: .1em; text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.stat-value {
+  font-family: var(--font-mono); font-size: 28px; font-weight: 700;
+  color: var(--text-primary);
+}
+.stat-value.accent { color: var(--accent); }
+.stat-value.warning { color: var(--warning); }
+.stat-value.danger  { color: var(--danger); }
+.stat-value.success { color: var(--success); }
+.stat-sub { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+
+/* ── Tables ───────────────────────────────────── */
+.table-container {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.table-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.table-title {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 700;
+  color: var(--text-secondary); letter-spacing: .06em; text-transform: uppercase;
+}
+table { width: 100%; border-collapse: collapse; }
+th {
+  padding: 10px 16px;
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-muted); letter-spacing: .1em; text-transform: uppercase;
+  text-align: left;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+td {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(30,45,61,.6);
+  font-size: 13px;
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,.02); }
+.mono { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+.file-name { font-weight: 500; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Badges / Pills ───────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 99px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.badge-success { background: rgba(0,229,160,.12); color: var(--success); }
+.badge-warning { background: rgba(255,184,0,.12); color: var(--warning); }
+.badge-danger  { background: rgba(255,76,106,.12); color: var(--danger); }
+.badge-info    { background: rgba(0,212,255,.12);  color: var(--accent); }
+.badge-muted   { background: var(--bg-raised); color: var(--text-muted); }
+
+/* ── Buttons ──────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 500; font-family: var(--font-body);
+  cursor: pointer; transition: var(--transition);
+  border: 1px solid transparent;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.btn-primary {
+  background: var(--accent); color: #000;
+  border-color: var(--accent);
+}
+.btn-primary:hover { background: #33ddff; border-color: #33ddff; }
+.btn-secondary {
+  background: transparent; color: var(--text-secondary);
+  border-color: var(--border);
+}
+.btn-secondary:hover { border-color: var(--border-bright); color: var(--text-primary); background: var(--bg-hover); }
+.btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+.btn-sm { padding: 5px 11px; font-size: 12px; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ── Forms ────────────────────────────────────── */
+.form-group { margin-bottom: 16px; }
+.form-label {
+  display: block; margin-bottom: 6px;
+  font-size: 12px; font-weight: 500; color: var(--text-secondary);
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .08em;
+}
+.form-input, .form-textarea, .form-select {
+  width: 100%; padding: 9px 13px;
+  background: var(--bg-raised); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  font-size: 14px; font-family: var(--font-body);
+  transition: var(--transition);
+  outline: none;
+}
+.form-input:focus, .form-textarea:focus, .form-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+.form-textarea { resize: vertical; min-height: 80px; }
+.form-select option { background: var(--bg-surface); }
+.form-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+/* ── Upload Zone ──────────────────────────────── */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: var(--transition);
+  background: var(--bg-raised);
+}
+.upload-zone:hover, .upload-zone.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+.upload-icon { color: var(--text-muted); margin-bottom: 12px; }
+.upload-zone.drag-over .upload-icon { color: var(--accent); }
+.upload-text { font-size: 14px; color: var(--text-secondary); }
+.upload-text strong { color: var(--text-primary); }
+.upload-subtext { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
+/* ── Progress ─────────────────────────────────── */
+.progress-bar {
+  width: 100%; height: 4px;
+  background: var(--bg-raised);
+  border-radius: 99px;
+  overflow: hidden;
+  margin-top: 12px;
+  display: none;
+}
+.progress-bar.visible { display: block; }
+.progress-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  border-radius: 99px;
+  transition: width .3s ease;
+}
+.progress-fill.indeterminate {
+  width: 40%;
+  animation: progress-anim 1.4s infinite linear;
+}
+@keyframes progress-anim {
+  0%  { transform: translateX(-100%); }
+  100%{ transform: translateX(350%); }
+}
+
+/* ── Chat ─────────────────────────────────────── */
+.chat-container {
+  display: flex; flex-direction: column;
+  height: calc(100vh - 180px);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.chat-messages {
+  flex: 1; overflow-y: auto;
+  padding: 20px; display: flex; flex-direction: column; gap: 16px;
+}
+.chat-bubble {
+  max-width: 78%;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  font-size: 13.5px; line-height: 1.65;
+  animation: bubble-in .15s ease;
+}
+@keyframes bubble-in { from { opacity:0; transform: translateY(6px) } to { opacity:1; transform: none } }
+.chat-bubble.user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #000;
+  border-bottom-right-radius: 4px;
+  font-weight: 500;
+}
+.chat-bubble.assistant {
+  align-self: flex-start;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+  color: var(--text-primary);
+}
+.chat-bubble.assistant pre { background: rgba(0,0,0,.3); padding: 8px; border-radius: 4px; margin-top: 6px; overflow-x: auto; font-size: 12px; }
+.chat-bubble.assistant code { font-family: var(--font-mono); font-size: 12px; background: rgba(0,0,0,.2); padding: 1px 4px; border-radius: 3px; }
+.chat-bubble.typing { background: var(--bg-raised); border: 1px solid var(--border); }
+.typing-dots { display: flex; gap: 4px; padding: 4px 0; }
+.typing-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); animation: typing .9s infinite; }
+.typing-dots span:nth-child(2) { animation-delay: .2s; }
+.typing-dots span:nth-child(3) { animation-delay: .4s; }
+@keyframes typing { 0%,80%,100%{opacity:.2; transform:scale(.9)} 40%{opacity:1; transform:scale(1)} }
+.chat-input-row {
+  display: flex; gap: 8px; align-items: flex-end;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+.chat-input {
+  flex: 1; padding: 9px 13px;
+  background: var(--bg-surface); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  font-size: 14px; font-family: var(--font-body);
+  resize: none; max-height: 120px;
+  outline: none; transition: var(--transition);
+}
+.chat-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+
+/* ── Alerts ───────────────────────────────────── */
+.alert-item {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex; gap: 14px;
+  transition: var(--transition);
+  margin-bottom: 10px;
+}
+.alert-item.unread { border-color: var(--warning); }
+.alert-item:hover { border-color: var(--border-bright); }
+.alert-icon-wrap {
+  width: 36px; height: 36px; border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.alert-icon-wrap.warning { background: rgba(255,184,0,.12); color: var(--warning); }
+.alert-icon-wrap.danger  { background: rgba(255,76,106,.12); color: var(--danger); }
+.alert-icon-wrap.info    { background: rgba(0,212,255,.12);  color: var(--accent); }
+.alert-body { flex: 1; min-width: 0; }
+.alert-title { font-weight: 600; font-size: 13.5px; color: var(--text-primary); margin-bottom: 4px; }
+.alert-msg { font-size: 12.5px; color: var(--text-secondary); line-height: 1.55; }
+.alert-meta { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-top: 6px; }
+
+/* ── Toast ────────────────────────────────────── */
+#toast-container {
+  position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.toast {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; min-width: 260px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary); font-size: 13px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  animation: toast-in .2s ease;
+}
+@keyframes toast-in { from { opacity:0; transform: translateX(20px) } to { opacity:1; transform: none } }
+.toast.success { border-color: var(--success); }
+.toast.error   { border-color: var(--danger); }
+.toast.warning { border-color: var(--warning); }
+
+/* ── Search bar ───────────────────────────────── */
+.search-bar {
+  display: flex; gap: 8px; margin-bottom: 20px;
+}
+.search-input {
+  flex: 1; padding: 9px 13px 9px 38px;
+  background: var(--bg-surface); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  font-size: 14px; outline: none; transition: var(--transition);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%233d5266' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398l3.85 3.85a1 1 0 0 0 1.415-1.415l-3.868-3.833zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: 12px center;
+}
+.search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+
+/* ── Empty state ──────────────────────────────── */
+.empty-state {
+  text-align: center; padding: 60px 20px;
+  color: var(--text-muted);
+}
+.empty-state svg { opacity: .3; margin-bottom: 16px; }
+.empty-state p { font-size: 14px; }
+
+/* ── Divider ──────────────────────────────────── */
+.divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+/* ── Auth overlay ─────────────────────────────── */
+#auth-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--bg-base);
+  display: flex; align-items: center; justify-content: center;
+}
+.auth-card {
+  width: 100%; max-width: 380px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 36px;
+}
+.auth-logo {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 30px;
+}
+.auth-logo-box {
+  width: 42px; height: 42px; border-radius: var(--radius-md);
+  background: var(--accent); display: flex; align-items: center; justify-content: center;
+}
+.auth-title { font-family: var(--font-mono); font-size: 22px; font-weight: 700; color: var(--accent); }
+.auth-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.auth-tabs {
+  display: flex; gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md); overflow: hidden; margin-bottom: 24px;
+}
+.auth-tab {
+  flex: 1; padding: 8px; text-align: center;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: var(--transition); border: none;
+  background: transparent; color: var(--text-secondary);
+}
+.auth-tab.active { background: var(--accent); color: #000; }
+.auth-error { font-size: 12px; color: var(--danger); margin-top: 8px; }
+.auth-skip {
+  text-align: center; margin-top: 16px;
+  font-size: 12px; color: var(--text-muted);
+}
+.auth-skip a { color: var(--accent); cursor: pointer; text-decoration: underline; }
+
+/* ── Insight box ──────────────────────────────── */
+.insight-box {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px; margin-top: 16px;
+  font-size: 13px; line-height: 1.7;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  max-height: 320px; overflow-y: auto;
+}
+.insight-box strong { color: var(--accent); }
+
+/* ── Responsive ───────────────────────────────── */
+@media(max-width:768px){
+  .app { grid-template-columns: 1fr; grid-template-rows: 56px auto 1fr; }
+  .sidebar { grid-row: 2; display: flex; flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--border); padding: 8px; }
+  .nav-section { display: none; }
+  .nav-item { padding: 8px 12px; border-radius: var(--radius-md); }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .page { padding: 16px; }
+  .chat-container { height: calc(100vh - 220px); }
+}
+</style>
+</head>
+<body>
+
+<!-- Auth Overlay -->
+<div id="auth-overlay">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-box">
+        <svg width="24" height="24" fill="none" viewBox="0 0 24 24"><path d="M12 2L3 7v10l9 5 9-5V7L12 2z" stroke="#000" stroke-width="2" stroke-linejoin="round"/><path d="M12 12L3 7M12 12v10M12 12l9-5" stroke="#000" stroke-width="2"/></svg>
+      </div>
+      <div>
+        <div class="auth-title">DDAS</div>
+        <div class="auth-subtitle">Data Download Duplication Alert System</div>
+      </div>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchAuthTab('login')">Login</button>
+      <button class="auth-tab" onclick="switchAuthTab('register')">Register</button>
+    </div>
+    <!-- Login -->
+    <div id="auth-login">
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input class="form-input" id="login-username" placeholder="your_username" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <div class="auth-error" id="login-error"></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" onclick="doLogin()">Sign In →</button>
+      <div class="auth-skip">or <a onclick="skipAuth()">continue as guest</a></div>
+    </div>
+    <!-- Register -->
+    <div id="auth-register" style="display:none">
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input class="form-input" id="reg-username" placeholder="choose_username" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email (optional)</label>
+        <input class="form-input" id="reg-email" type="email" placeholder="you@example.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" id="reg-password" type="password" placeholder="min 8 characters" autocomplete="new-password">
+      </div>
+      <div class="auth-error" id="reg-error"></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" onclick="doRegister()">Create Account →</button>
+      <div class="auth-skip">or <a onclick="skipAuth()">continue as guest</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- App Shell -->
+<div class="app" id="app-shell" style="display:none">
+  <!-- Top Bar -->
+  <header class="topbar">
+    <a class="topbar-logo" href="#">
+      <div class="logo-icon">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M12 2L3 7v10l9 5 9-5V7L12 2z" stroke="#000" stroke-width="2.5" stroke-linejoin="round"/><path d="M12 12L3 7M12 12v10M12 12l9-5" stroke="#000" stroke-width="2.5"/></svg>
+      </div>
+      DDAS
+    </a>
+    <div class="topbar-spacer"></div>
+    <div class="status-pill">
+      <span class="status-dot" id="monitor-dot"></span>
+      <span id="monitor-status-text">Monitor Active</span>
+    </div>
+    <button class="btn-icon" title="Notifications" onclick="navigate('alerts')">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span class="alert-badge" id="topbar-badge"></span>
+    </button>
+    <button class="btn-icon" title="Logout" onclick="logout()">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </header>
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="nav-section">Overview</div>
+    <button class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+      <svg class="nav-icon" width="16" height="16" fill="none" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/></svg>
+      Dashboard
+    </button>
+
+    <div class="nav-section">Data</div>
+    <button class="nav-item" data-page="upload" onclick="navigate('upload')">
+      <svg class="nav-icon" width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Upload
+    </button>
+    <button class="nav-item" data-page="repository" onclick="navigate('repository')">
+      <svg class="nav-icon" width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M3 3h18v18H3V3zM3 9h18M9 21V9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      Repository
+    </button>
+    <button class="nav-item" data-page="alerts" onclick="navigate('alerts')">
+      <svg class="nav-icon" width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      Alerts
+      <span class="nav-badge" id="alerts-badge" style="display:none"></span>
+    </button>
+    <button class="nav-item" data-page="history" onclick="navigate('history')">
+      <svg class="nav-icon" width="16" height="16" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      History
+    </button>
+
+    <div class="nav-section">Tools</div>
+    <button class="nav-item" data-page="ai-chat" onclick="navigate('ai-chat')">
+      <svg class="nav-icon" width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      AI Chat
+    </button>
+    <button class="nav-item" data-page="analytics" onclick="navigate('analytics')">
+      <svg class="nav-icon" width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18M3 18l5-7 5 4 7-10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      Analytics
+    </button>
+    <button class="nav-item" data-page="scanner" onclick="navigate('scanner')">
+      <svg class="nav-icon" width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M21 5a2 2 0 0 0-2-2h-4V3a2 2 0 0 0-4 0v2H5a2 2 0 0 0-2 2v3l21 0V5zM3 12h18M5 20h14a2 2 0 0 0 2-2v-3H3v3a2 2 0 0 0 2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      Scanner
+    </button>
+    <button class="nav-item" data-page="duplicates" onclick="navigate('duplicates')">
+      <svg class="nav-icon" width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16M8 3v2M8 9v2M8 15v2M16 3v2M16 9v2M16 15v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      Duplicates
+    </button>
+    <button class="nav-item" data-page="export" onclick="navigate('export')">
+      <svg class="nav-icon" width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5 5-5-5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Export
+    </button>
+
+    <div class="sidebar-footer">
+      <button class="monitor-toggle active" id="monitor-toggle-btn" onclick="toggleMonitor()">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span id="monitor-btn-text">Monitor ON</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <section class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div class="page-header-icon">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/></svg>
+        </div>
+        <div>
+          <div class="page-title">Dashboard</div>
+          <div class="page-subtitle">System overview &amp; real-time monitoring stats</div>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-secondary btn-sm" onclick="triggerScan()">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            Manual Scan
+          </button>
+        </div>
+      </div>
+
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Datasets</div>
+          <div class="stat-value accent" id="stat-total">—</div>
+          <div class="stat-sub">registered in repository</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Duplicates Blocked</div>
+          <div class="stat-value warning" id="stat-dupes">—</div>
+          <div class="stat-sub">download attempts prevented</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Size</div>
+          <div class="stat-value" id="stat-size">—</div>
+          <div class="stat-sub">data under management</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Unread Alerts</div>
+          <div class="stat-value danger" id="stat-alerts">—</div>
+          <div class="stat-sub">require attention</div>
+        </div>
+      </div>
+
+      <!-- Recent Scan Logs -->
+      <div class="table-container">
+        <div class="table-header">
+          <span class="table-title">Recent Scan Activity</span>
+          <button class="btn btn-secondary btn-sm" onclick="loadScanLogs()">Refresh</button>
+        </div>
+        <table id="scan-logs-table">
+          <thead><tr>
+            <th>File</th><th>Hash</th><th>Size</th><th>Status</th><th>Time</th>
+          </tr></thead>
+          <tbody id="scan-logs-body">
+            <tr><td colspan="5"><div class="empty-state"><p>No scan logs yet. Run a manual scan to populate.</p></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- UPLOAD -->
+    <section class="page" id="page-upload">
+      <div class="page-header">
+        <div class="page-header-icon">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div><div class="page-title">Upload Data</div>
+        <div class="page-subtitle">Upload local files or import from URL</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:900px">
+        <!-- File upload card -->
+        <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px">
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px">Local File</div>
+          <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleFileDrop(event)">
+            <div class="upload-icon">
+              <svg width="40" height="40" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke="currentColor" stroke-width="1.5"/><polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><line x1="12" y1="18" x2="12" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polyline points="9 15 12 12 15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="upload-text"><strong>Drop file here</strong> or click to browse</div>
+            <div class="upload-subtext" id="selected-file-name">CSV, JSON, Excel, images, PDF, ZIP…</div>
+          </div>
+          <input type="file" id="file-input" style="display:none" onchange="handleFileSelect(event)">
+          <div class="progress-bar" id="file-progress"><div class="progress-fill indeterminate" id="file-progress-fill"></div></div>
+        </div>
+
+        <!-- URL upload card -->
+        <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px">
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px">From URL</div>
+          <div class="form-group">
+            <label class="form-label">File URL</label>
+            <input class="form-input" id="url-input" placeholder="https://example.com/dataset.csv" type="url">
+            <div class="form-hint">Only public HTTPS URLs. Private IP ranges are blocked.</div>
+          </div>
+          <div class="progress-bar" id="url-progress"><div class="progress-fill indeterminate"></div></div>
+          <button class="btn btn-primary" onclick="uploadFromUrl()" style="width:100%;justify-content:center;margin-top:4px">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Import from URL
+          </button>
+        </div>
+      </div>
+
+      <!-- Metadata form -->
+      <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-top:16px;max-width:900px">
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px">Metadata (optional)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-group">
+            <label class="form-label">Your Name</label>
+            <input class="form-input" id="meta-user" placeholder="Researcher / System">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Spatial Domain</label>
+            <input class="form-input" id="meta-domain" placeholder="India, Asia-Pacific, Global…">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Period</label>
+            <input class="form-input" id="meta-period" placeholder="2020–2024, Monthly…">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Description</label>
+            <input class="form-input" id="meta-desc" placeholder="Brief description of the dataset">
+          </div>
+        </div>
+        <button class="btn btn-primary" id="upload-btn" onclick="doFileUpload()" disabled>
+          <svg width="15" height="15" fill="none" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Upload File
+        </button>
+      </div>
+
+      <!-- Upload result -->
+      <div id="upload-result" style="display:none;max-width:900px;margin-top:16px">
+        <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px">
+          <div id="upload-result-content"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- REPOSITORY -->
+    <section class="page" id="page-repository">
+      <div class="page-header">
+        <div class="page-header-icon">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M3 3h18v18H3V3zM3 9h18M9 21V9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div><div class="page-title">Dataset Repository</div>
+        <div class="page-subtitle">Browse and search all registered datasets</div></div>
+        <div style="margin-left:auto">
+          <button class="btn btn-secondary btn-sm" onclick="loadRepository()">Refresh</button>
+        </div>
+      </div>
+
+      <div class="search-bar">
+        <input class="search-input" id="repo-search" placeholder="Search by name, domain, period, description…" oninput="debounceSearch()">
+        <button class="btn btn-primary btn-sm" onclick="doSearch()">Search</button>
+      </div>
+
+      <div class="table-container">
+        <div class="table-header">
+          <span class="table-title">All Datasets</span>
+          <span id="repo-count" style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted)"></span>
+        </div>
+        <table>
+          <thead><tr>
+            <th>File</th><th>Type</th><th>Size</th><th>Domain</th><th>Period</th><th>Added By</th><th>Date</th>
+          </tr></thead>
+          <tbody id="repo-body">
+            <tr><td colspan="7"><div class="empty-state"><p>Loading…</p></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ALERTS -->
+    <section class="page" id="page-alerts">
+      <div class="page-header">
+        <div class="page-header-icon" style="color:var(--warning)">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div><div class="page-title">Alerts</div>
+        <div class="page-subtitle">Duplicate detections and system notifications</div></div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="markAllRead()">Mark All Read</button>
+          <button class="btn btn-secondary btn-sm" onclick="loadAlerts()">Refresh</button>
+        </div>
+      </div>
+      <div id="alerts-list"><div class="empty-state"><svg width="48" height="48" fill="none" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="1.5"/></svg><p>No alerts yet. The system will notify you of duplicates here.</p></div></div>
+    </section>
+
+    <!-- HISTORY -->
+    <section class="page" id="page-history">
+      <div class="page-header">
+        <div class="page-header-icon">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div><div class="page-title">Download History</div>
+        <div class="page-subtitle">All upload and scan events</div></div>
+        <div style="margin-left:auto"><button class="btn btn-secondary btn-sm" onclick="loadHistory()">Refresh</button></div>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead><tr>
+            <th>File</th><th>Action</th><th>Status</th><th>User</th><th>IP</th><th>Time</th>
+          </tr></thead>
+          <tbody id="history-body">
+            <tr><td colspan="6"><div class="empty-state"><p>No history yet.</p></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- AI CHAT -->
+    <section class="page" id="page-ai-chat">
+      <div class="page-header">
+        <div class="page-header-icon" style="color:var(--accent)">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+          <div class="page-title">IAS Chatbot</div>
+          <div class="page-subtitle" id="ai-model-subtitle">Powered by Google Gemini</div>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <span id="ai-status-badge" class="badge badge-muted">Checking…</span>
+          <button class="btn btn-secondary btn-sm" onclick="clearChat()">Clear Chat</button>
+        </div>
+      </div>
+      <div class="chat-container">
+        <div class="chat-messages" id="chat-messages">
+          <!-- Dynamic assistant messages will be appended here by JavaScript -->
+        </div>
+        <div class="chat-input-row">
+          <textarea class="chat-input" id="chat-input" rows="1" placeholder="Ask about your data, files, or the system…" onkeydown="chatKeydown(event)" oninput="autoResize(this)"></textarea>
+          <button class="btn btn-primary" onclick="sendChat()" id="chat-send-btn">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polygon points="22 2 15 22 11 13 2 9 22 2" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ANALYTICS -->
+    <section class="page" id="page-analytics">
+      <div class="page-header">
+        <div class="page-header-icon" style="color:var(--accent)">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M3 3v18h18M3 18l5-7 5 4 7-10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div>
+          <div class="page-title">Analytics & Insights</div>
+          <div class="page-subtitle">Real-time system metrics and performance data</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="loadAnalytics()">Refresh</button>
+      </div>
+      <div id="analytics-container" style="padding:16px"></div>
+    </section>
+
+    <!-- ADVANCED SCANNER -->
+    <section class="page" id="page-scanner">
+      <div class="page-header">
+        <div class="page-header-icon" style="color:var(--warning)">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M21 5a2 2 0 0 0-2-2h-4V3a2 2 0 0 0-4 0v2H5a2 2 0 0 0-2 2v3l21 0V5zM3 12h18M5 20h14a2 2 0 0 0 2-2v-3H3v3a2 2 0 0 0 2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div>
+          <div class="page-title">Advanced Directory Scanner</div>
+          <div class="page-subtitle">Scan custom directories for duplicates in real-time</div>
+        </div>
+      </div>
+      <div style="padding:16px">
+        <div class="card">
+          <div style="margin-bottom:12px">
+            <label style="font-weight:500;display:block;margin-bottom:6px">Directory Path</label>
+            <div style="display:flex;gap:8px">
+              <input type="text" id="scanner-path" placeholder="e.g., C:\Users\YourName\Downloads" style="flex:1;padding:8px 12px;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary)" />
+              <button class="btn btn-primary" onclick="startDirectoryScan()">Scan Directory</button>
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
+            <input type="checkbox" id="scanner-recursive" />
+            Include subdirectories
+          </label>
+        </div>
+        <div id="scan-progress" style="margin-top:16px"></div>
+      </div>
+    </section>
+
+    <!-- EXPORT & BACKUP -->
+    <section class="page" id="page-export">
+      <div class="page-header">
+        <div class="page-header-icon" style="color:var(--success)">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5 5-5-5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+          <div class="page-title">Export & Backup</div>
+          <div class="page-subtitle">Export scan results, duplicates, and dataset metadata as ZIP files</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="loadAvailableExports()">Refresh</button>
+      </div>
+      <div style="padding:16px">
+        <div class="card" style="margin-bottom:16px">
+          <div style="margin-bottom:12px;font-weight:500">Export Options</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="exportScanResults()">
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5 5-5-5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              Export Scan Results
+            </button>
+            <button class="btn btn-primary" onclick="exportAllDatasets()">
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5 5-5-5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              Export All Datasets
+            </button>
+            <button class="btn btn-secondary" onclick="cleanupOldExports()">
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M19 7l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+               Clean Old Exports
+            </button>
+          </div>
+        </div>
+        <div class="card">
+          <div style="font-weight:500;margin-bottom:12px">Available Exports</div>
+          <div id="exports-list" style="font-size:13px">
+            <div class="empty-state"><p>No exports yet. Create one to see it listed here.</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DUPLICATES DETECTOR -->
+    <section class="page" id="page-duplicates">
+      <div class="page-header">
+        <div class="page-header-icon" style="color:var(--warning)">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div>
+          <div class="page-title">Duplicate Detector</div>
+          <div class="page-subtitle">Identify and manage duplicate files with their storage locations</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="loadDuplicateDetector()" style="margin-left:auto">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          Refresh
+        </button>
+      </div>
+
+      <div id="duplicates-container" style="padding:0">
+        <!-- Duplicate Detector Component will be loaded here -->
+        <div style="text-align:center;padding:40px;color:var(--text-muted)">
+          <div style="font-size:40px;margin-bottom:16px">⏳</div>
+          <div style="font-size:14px">Loading duplicate detector...</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<script>
+// ═════════════════════════════════════════════════════════════
+// STATE
+// ═════════════════════════════════════════════════════════════
+let authToken = localStorage.getItem('ddas_token') || '';
+let currentUser = JSON.parse(localStorage.getItem('ddas_user') || 'null');
+let selectedFile = null;
+let chatSessionId = 'sess_' + Math.random().toString(36).slice(2);
+let searchDebounceTimer = null;
+let monitorRunning = true;
+
+// ═════════════════════════════════════════════════════════════
+// API CLIENT
+// ═════════════════════════════════════════════════════════════
+async function api(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+  if (opts.json) {
+    headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(opts.json);
+  }
+  try {
+    const res = await fetch(path, { ...opts, headers });
+    const data = await res.json();
+    if (res.status === 401) { logout(); return data; }
+    return { ...data, _status: res.status };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+// ═════════════════════════════════════════════════════════════
+// AUTH
+// ═════════════════════════════════════════════════════════════
+function switchAuthTab(tab) {
+  document.getElementById('auth-login').style.display = tab === 'login' ? '' : 'none';
+  document.getElementById('auth-register').style.display = tab === 'register' ? '' : 'none';
+  document.querySelectorAll('.auth-tab').forEach((t,i) => t.classList.toggle('active', (i===0 && tab==='login') || (i===1 && tab==='register')));
+}
+
+async function doLogin() {
+  const u = document.getElementById('login-username').value.trim();
+  const p = document.getElementById('login-password').value;
+  document.getElementById('login-error').textContent = '';
+  if (!u || !p) { document.getElementById('login-error').textContent = 'Fill in all fields.'; return; }
+  const r = await api('/api/auth/login', { method: 'POST', json: { username: u, password: p } });
+  if (r.success) {
+    authToken = r.data.access_token;
+    currentUser = r.data.user;
+    localStorage.setItem('ddas_token', authToken);
+    localStorage.setItem('ddas_user', JSON.stringify(currentUser));
+    showApp();
+  } else {
+    document.getElementById('login-error').textContent = r.error || 'Login failed.';
+  }
+}
+
+async function doRegister() {
+  const u = document.getElementById('reg-username').value.trim();
+  const e = document.getElementById('reg-email').value.trim();
+  const p = document.getElementById('reg-password').value;
+  document.getElementById('reg-error').textContent = '';
+  if (!u || !p) { document.getElementById('reg-error').textContent = 'Fill in all fields.'; return; }
+  const r = await api('/api/auth/register', { method: 'POST', json: { username: u, email: e, password: p } });
+  if (r.success) {
+    authToken = r.data.access_token;
+    currentUser = r.data.user;
+    localStorage.setItem('ddas_token', authToken);
+    localStorage.setItem('ddas_user', JSON.stringify(currentUser));
+    showApp();
+  } else {
+    document.getElementById('reg-error').textContent = r.error || 'Registration failed.';
+  }
+}
+
+function skipAuth() {
+  authToken = '';
+  currentUser = null;
+  showApp();
+}
+
+function logout() {
+  authToken = ''; currentUser = null;
+  localStorage.removeItem('ddas_token'); localStorage.removeItem('ddas_user');
+  document.getElementById('auth-overlay').style.display = 'flex';
+  document.getElementById('app-shell').style.display = 'none';
+}
+
+function showApp() {
+  document.getElementById('auth-overlay').style.display = 'none';
+  document.getElementById('app-shell').style.display = 'grid';
+  loadDashboard();
+  loadAlertCount();
+  checkAIStatus();
+}
+
+// Auto-login if token exists
+window.addEventListener('load', () => {
+  if (authToken) { showApp(); } 
+  else { document.getElementById('auth-overlay').style.display = 'flex'; }
+  // Enter key in auth fields
+  ['login-password', 'reg-password'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => { if(e.key==='Enter') id.startsWith('login') ? doLogin() : doRegister(); });
+  });
+  document.getElementById('login-username').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+});
+
+// ═════════════════════════════════════════════════════════════
+// NAVIGATION
+// ═════════════════════════════════════════════════════════════
+function navigate(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page)?.classList.add('active');
+  document.querySelector(`[data-page="${page}"]`)?.classList.add('active');
+  // Load data when navigating
+  if (page === 'dashboard') loadDashboard();
+  if (page === 'repository') loadRepository();
+  if (page === 'alerts') loadAlerts();
+  if (page === 'history') loadHistory();
+  if (page === 'analytics') loadAnalytics();
+  if (page === 'scanner') loadScannerUI();
+  if (page === 'export') loadAvailableExports();
+  if (page === 'duplicates') loadDuplicateDetector();
+}
+
+// ═════════════════════════════════════════════════════════════
+// DASHBOARD
+// ═════════════════════════════════════════════════════════════
+async function loadDashboard() {
+  const r = await api('/api/datasets/stats');
+  if (r.success) {
+    const d = r.data;
+    document.getElementById('stat-total').textContent = d.total_datasets ?? '0';
+    document.getElementById('stat-dupes').textContent = d.duplicate_prevention_count ?? '0';
+    document.getElementById('stat-size').textContent = fmtBytes(d.total_size_bytes ?? 0);
+  }
+  loadScanLogs();
+  loadAlertCount();
+}
+
+async function loadScanLogs() {
+  const r = await api('/api/scan-logs?limit=30');
+  const tbody = document.getElementById('scan-logs-body');
+  if (!r.success || !r.data?.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p>No scan logs yet.</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = r.data.map(row => `
+    <tr>
+      <td><div class="file-name">${esc(row.file_name || row.file_path)}</div></td>
+      <td><span class="mono">${esc((row.file_hash || '').slice(0,12))}…</span></td>
+      <td class="mono">${fmtBytes(row.file_size || 0)}</td>
+      <td>${row.is_duplicate ? '<span class="badge badge-warning">Duplicate</span>' : '<span class="badge badge-success">New</span>'}</td>
+      <td class="mono">${fmtDate(row.scanned_at)}</td>
+    </tr>`).join('');
+}
+
+async function triggerScan() {
+  const btn = event.target.closest('button');
+  btn.disabled = true; btn.textContent = 'Scanning…';
+  const r = await api('/api/monitor/scan', { method: 'POST', json: {} });
+  btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Manual Scan';
+  if (r.success) {
+    toast(`Scan complete: ${r.data.scanned} files, ${r.data.duplicates} duplicates`, 'success');
+    loadDashboard();
+    loadAnalytics();
+    loadScanLogs();
+  } else toast(r.error || 'Scan failed', 'error');
+}
+
+// ═════════════════════════════════════════════════════════════
+// UPLOAD
+// ═════════════════════════════════════════════════════════════
+function handleFileSelect(event) {
+  selectedFile = event.target.files[0];
+  if (selectedFile) {
+    document.getElementById('selected-file-name').textContent = `${selectedFile.name} (${fmtBytes(selectedFile.size)})`;
+    document.getElementById('upload-btn').disabled = false;
+  }
+}
+function handleFileDrop(event) {
+  event.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag-over');
+  selectedFile = event.dataTransfer.files[0];
+  if (selectedFile) {
+    document.getElementById('selected-file-name').textContent = `${selectedFile.name} (${fmtBytes(selectedFile.size)})`;
+    document.getElementById('upload-btn').disabled = false;
+  }
+}
+
+async function doFileUpload() {
+  if (!selectedFile) return;
+  const progress = document.getElementById('file-progress');
+  progress.classList.add('visible');
+  document.getElementById('upload-btn').disabled = true;
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+  fd.append('user_name', document.getElementById('meta-user').value || 'Anonymous');
+  fd.append('description', document.getElementById('meta-desc').value);
+  fd.append('period', document.getElementById('meta-period').value);
+  fd.append('spatial_domain', document.getElementById('meta-domain').value);
+
+  const r = await fetch('/api/upload/file', {
+    method: 'POST',
+    headers: { ...(authToken ? { Authorization: 'Bearer ' + authToken } : {}) },
+    body: fd,
+  }).then(r => r.json()).catch(e => ({ success: false, error: e.message }));
+
+  progress.classList.remove('visible');
+  document.getElementById('upload-btn').disabled = false;
+  showUploadResult(r);
+}
+
+async function uploadFromUrl() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) { toast('Enter a URL first', 'warning'); return; }
+  const progress = document.getElementById('url-progress');
+  progress.classList.add('visible');
+  const r = await api('/api/upload/url', {
+    method: 'POST',
+    json: {
+      url,
+      user_name: document.getElementById('meta-user').value || 'Anonymous',
+      description: document.getElementById('meta-desc').value,
+    }
+  });
+  progress.classList.remove('visible');
+  showUploadResult(r);
+}
+
+function showUploadResult(r) {
+  const el = document.getElementById('upload-result');
+  const content = document.getElementById('upload-result-content');
+  el.style.display = 'block';
+  if (!r.success) {
+    content.innerHTML = `<div class="badge badge-danger" style="margin-bottom:8px">Error</div><p style="color:var(--danger)">${esc(r.error)}</p>`;
+    return;
+  }
+  const d = r.data;
+  if (d.is_duplicate) {
+    content.innerHTML = `
+      <div class="badge badge-warning" style="margin-bottom:12px">⚠ Duplicate Detected</div>
+      <p style="color:var(--text-secondary)">This file already exists in the repository as <strong>${esc(d.existing_file)}</strong>.</p>
+    `;
+    toast('Duplicate detected!', 'warning');
+  } else {
+    content.innerHTML = `
+      <div class="badge badge-success" style="margin-bottom:12px">✓ Uploaded Successfully</div>
+      <p style="color:var(--text-secondary);margin-bottom:12px">Registered as <strong>${esc(d.dataset?.file_name)}</strong></p>
+      ${d.ai_insights ? `<div><div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">AI Analysis</div><div class="insight-box">${renderMarkdown(d.ai_insights)}</div></div>` : ''}
+    `;
+    toast('File uploaded successfully!', 'success');
+    loadDashboard();
+  }
+}
+
+// ═════════════════════════════════════════════════════════════
+// REPOSITORY
+// ═════════════════════════════════════════════════════════════
+async function loadRepository(query = '') {
+  const url = query ? `/api/datasets/search?q=${encodeURIComponent(query)}` : '/api/datasets';
+  const r = await api(url);
+  const tbody = document.getElementById('repo-body');
+  const count = document.getElementById('repo-count');
+  if (!r.success) { tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>Failed to load.</p></div></td></tr>`; return; }
+  const list = Array.isArray(r.data) ? r.data : [];
+  count.textContent = `${list.length} dataset${list.length !== 1 ? 's' : ''}`;
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><svg width="40" height="40" fill="none" viewBox="0 0 24 24"><path d="M3 3h18v18H3V3zM3 9h18M9 21V9" stroke="currentColor" stroke-width="1.5"/></svg><p>No datasets registered yet. Upload a file to get started.</p></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(ds => `
+    <tr>
+      <td><div class="file-name" title="${esc(ds.file_name)}">${esc(ds.file_name)}</div></td>
+      <td><span class="badge badge-info">${esc(ds.file_type || 'unknown')}</span></td>
+      <td class="mono">${fmtBytes(ds.file_size || 0)}</td>
+      <td>${ds.spatial_domain ? `<span style="color:var(--text-secondary)">${esc(ds.spatial_domain)}</span>` : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td>${ds.period ? `<span style="color:var(--text-secondary)">${esc(ds.period)}</span>` : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td>${esc(ds.user_name || '—')}</td>
+      <td class="mono">${fmtDate(ds.created_at)}</td>
+    </tr>`).join('');
+}
+
+function debounceSearch() {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(doSearch, 350);
+}
+function doSearch() {
+  loadRepository(document.getElementById('repo-search').value.trim());
+}
+
+// ═════════════════════════════════════════════════════════════
+// ALERTS
+// ═════════════════════════════════════════════════════════════
+async function loadAlerts() {
+  const r = await api('/api/alerts');
+  const el = document.getElementById('alerts-list');
+  if (!r.success || !r.data?.alerts?.length) {
+    el.innerHTML = '<div class="empty-state"><svg width="48" height="48" fill="none" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="1.5"/></svg><p>No alerts. All clear!</p></div>';
+    updateBadgeCount(0); return;
+  }
+  updateBadgeCount(r.data.unread_count || 0);
+  document.getElementById('stat-alerts').textContent = r.data.unread_count || '0';
+  el.innerHTML = r.data.alerts.map(a => `
+    <div class="alert-item ${a.is_read ? '' : 'unread'}" id="alert-${a.id}">
+      <div class="alert-icon-wrap warning">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <div class="alert-body">
+        <div class="alert-title">${esc(a.title)}</div>
+        <div class="alert-msg">${esc(a.message)}</div>
+        <div class="alert-meta">${fmtDate(a.created_at)} · ${a.alert_type} · ${a.severity}</div>
+      </div>
+      ${!a.is_read ? `<button class="btn btn-secondary btn-sm" onclick="markRead('${a.id}')">Mark read</button>` : ''}
+    </div>`).join('');
+}
+
+async function loadAlertCount() {
+  const r = await api('/api/alerts?limit=1');
+  if (r.success) updateBadgeCount(r.data?.unread_count || 0);
+}
+
+async function markRead(id) {
+  await api(`/api/alerts/${id}/read`, { method: 'PATCH' });
+  loadAlerts();
+}
+async function markAllRead() {
+  await api('/api/alerts/read-all', { method: 'POST' });
+  loadAlerts();
+  toast('All alerts marked as read.', 'success');
+}
+function updateBadgeCount(n) {
+  const b1 = document.getElementById('alerts-badge');
+  const b2 = document.getElementById('topbar-badge');
+  document.getElementById('stat-alerts').textContent = n;
+  if (n > 0) {
+    b1.textContent = n; b1.style.display = 'inline-flex';
+    b2.textContent = n; b2.classList.add('visible');
+  } else {
+    b1.style.display = 'none'; b2.classList.remove('visible');
+  }
+}
+
+// ═════════════════════════════════════════════════════════════
+// HISTORY
+// ═════════════════════════════════════════════════════════════
+async function loadHistory() {
+  const r = await api('/api/history?limit=100');
+  const tbody = document.getElementById('history-body');
+  if (!r.success || !r.data?.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>No history yet.</p></div></td></tr>'; return;
+  }
+  tbody.innerHTML = r.data.map(h => `
+    <tr>
+      <td><div class="file-name">${esc(h.file_name || '—')}</div></td>
+      <td class="mono">${esc(h.action)}</td>
+      <td>${h.status === 'duplicate_detected' ? '<span class="badge badge-warning">Duplicate</span>' : '<span class="badge badge-success">Success</span>'}</td>
+      <td>${esc(h.user_name || '—')}</td>
+      <td class="mono" style="color:var(--text-muted)">${esc(h.ip_address || '—')}</td>
+      <td class="mono">${fmtDate(h.attempt_timestamp)}</td>
+    </tr>`).join('');
+}
+
+// ═════════════════════════════════════════════════════════════
+// MONITOR TOGGLE
+// ═════════════════════════════════════════════════════════════
+async function toggleMonitor() {
+  const btn = document.getElementById('monitor-toggle-btn');
+  if (monitorRunning) {
+    const r = await api('/api/monitor/stop', { method: 'POST' });
+    if (r.success || r._status === 403) {
+      monitorRunning = false;
+      setMonitorUI(false);
+      toast('Monitor stopped', 'warning');
+    } else toast('Insufficient permissions to stop monitor', 'error');
+  } else {
+    const r = await api('/api/monitor/start', { method: 'POST' });
+    if (r.success || r._status === 403) {
+      monitorRunning = true;
+      setMonitorUI(true);
+      toast('Monitor started', 'success');
+    } else toast('Insufficient permissions', 'error');
+  }
+}
+function setMonitorUI(running) {
+  const dot = document.getElementById('monitor-dot');
+  const text = document.getElementById('monitor-status-text');
+  const btnText = document.getElementById('monitor-btn-text');
+  const btn = document.getElementById('monitor-toggle-btn');
+  dot.classList.toggle('offline', !running);
+  text.textContent = running ? 'Monitor Active' : 'Monitor Offline';
+  btnText.textContent = running ? 'Monitor ON' : 'Monitor OFF';
+  btn.classList.toggle('active', running);
+}
+
+// ═════════════════════════════════════════════════════════════
+// AI CHAT
+// ═════════════════════════════════════════════════════════════
+async function checkAIStatus() {
+  const r = await api('/api/ai/status');
+  const badge = document.getElementById('ai-status-badge');
+  const sub = document.getElementById('ai-model-subtitle');
+  if (r.success) {
+    if (r.data.api_configured) {
+      badge.className = 'badge badge-success'; badge.textContent = r.data.model;
+      sub.textContent = `Powered by ${r.data.provider} · ${r.data.model}`;
+    } else {
+      badge.className = 'badge badge-warning'; badge.textContent = 'Demo mode';
+      sub.textContent = 'Set GOOGLE_API_KEY for full AI responses';
+    }
+  }
+}
+
+async function sendChat() {
+  const inp = document.getElementById('chat-input');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  inp.value = ''; autoResize(inp);
+  appendChatBubble(msg, 'user');
+  const typingEl = appendTyping();
+  const r = await api('/api/ai/chat', { method: 'POST', json: { message: msg, session_id: chatSessionId } });
+  typingEl.remove();
+  appendChatBubble(r.data?.reply || r.error || 'Sorry, something went wrong.', 'assistant');
+}
+
+function chatKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+}
+
+function appendChatBubble(text, role) {
+  const el = document.createElement('div');
+  el.className = `chat-bubble ${role}`;
+  el.innerHTML = role === 'assistant' ? renderMarkdown(text) : esc(text);
+  document.getElementById('chat-messages').appendChild(el);
+  el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  return el;
+}
+function appendTyping() {
+  const el = document.createElement('div');
+  el.className = 'chat-bubble typing';
+  el.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+  document.getElementById('chat-messages').appendChild(el);
+  el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  return el;
+}
+
+async function clearChat() {
+  await api('/api/ai/chat/clear', { method: 'POST', json: { session_id: chatSessionId } });
+  chatSessionId = 'sess_' + Math.random().toString(36).slice(2);
+  const msgs = document.getElementById('chat-messages');
+  msgs.innerHTML = '<div class="chat-bubble assistant">Chat cleared. How can I help?</div>';
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+// ═════════════════════════════════════════════════════════════
+// ANALYTICS
+// ═════════════════════════════════════════════════════════════
+async function loadAnalytics() {
+  const r = await api('/api/analytics/dashboard');
+  if (!r.success) return;
+  const d = r.data;
+  const container = document.getElementById('analytics-container');
+  container.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px">
+      <div class="stat-card">
+        <div class="stat-label">Total Datasets</div>
+        <div class="stat-value accent">${d.total_datasets || 0}</div>
+        <div class="stat-sub">${(d.new_files_7d || 0)} new this week</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Duplication Rate</div>
+        <div class="stat-value warning">${(d.duplication_rate || 0).toFixed(1)}%</div>
+        <div class="stat-sub">${d.duplicates_detected || 0} duplicates</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Storage</div>
+        <div class="stat-value" style="color:var(--success)">${(d.total_storage_gb || 0).toFixed(1)} GB</div>
+        <div class="stat-sub">Data under management</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Bandwidth Saved</div>
+        <div class="stat-value" style="color:var(--accent)">${(d.bandwidth_saved_gb || 0).toFixed(1)} GB</div>
+        <div class="stat-sub">${d.storage_efficiency?.toFixed(1) || 0}% efficiency</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Active Users</div>
+        <div class="stat-value" style="color:#7c6fff">${d.active_users_30d || 0}</div>
+        <div class="stat-sub">Last 30 days</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Unread Alerts</div>
+        <div class="stat-value danger">${d.unread_alerts || 0}</div>
+        <div class="stat-sub">Require attention</div>
+      </div>
+    </div>
+    <div style="text-align:center;color:var(--text-secondary);font-size:12px">
+      Last updated: ${new Date().toLocaleTimeString()}
+    </div>
+  `;
+}
+
+// ═════════════════════════════════════════════════════════════
+// ADVANCED SCANNER
+// ═════════════════════════════════════════════════════════════
+function loadScannerUI() {
+  // UI is already in HTML, just focus input
+  document.getElementById('scanner-path')?.focus();
+}
+
+async function startDirectoryScan() {
+  const path = document.getElementById('scanner-path')?.value?.trim();
+  if (!path) { toast('Please enter a directory path', 'e'); return; }
+  
+  const progress = document.getElementById('scan-progress');
+  progress.innerHTML = '<div style="text-align:center;padding:20px"><div style="animation:spin 1s linear infinite">⟳</div><p style="margin-top:8px">Scanning...</p></div>';
+  
+  const r = await api('/api/monitor/scan', {
+    method: 'POST',
+    json: { directory: path, recursive: document.getElementById('scanner-recursive')?.checked }
+  });
+  
+  if (r.success) {
+    const result = r.data?.summary || {};
+    progress.innerHTML = `
+      <div class="card" style="border-color:var(--success)">
+        <div style="color:var(--success);font-weight:600;margin-bottom:12px">✓ Scan Complete</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">Scanning completed at ${new Date().toLocaleTimeString()}</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
+          <div><div style="font-size:11px;color:var(--text-secondary)">Files Scanned</div><div style="font-size:18px;font-weight:600">${result.total_files || 0}</div></div>
+          <div><div style="font-size:11px;color:var(--text-secondary)">Duplicates Found</div><div style="font-size:18px;font-weight:600;color:var(--warning)">${result.duplicates_found || 0}</div></div>
+          <div><div style="font-size:11px;color:var(--text-secondary)">Errors</div><div style="font-size:18px;font-weight:600;color:var(--danger)">${result.errors || 0}</div></div>
+        </div>
+        ${r.data?.export_zip ? `<button class="btn btn-secondary btn-sm" onclick="downloadFile('${r.data.export_zip}')">📥 Download Results</button>` : ''}
+      </div>
+    `;
+    loadAnalytics();
+    loadAvailableExports();
+  } else {
+    progress.innerHTML = `<div class="card" style="border-color:var(--danger)"><div style="color:var(--danger)">✕ ${r.error || 'Scan failed'}</div></div>`;
+  }
+}
+
+// ═════════════════════════════════════════════════════════════
+// EXPORT
+// ═════════════════════════════════════════════════════════════
+async function exportScanResults() {
+  const r = await api('/api/export/scan-results', {
+    method: 'POST',
+    json: { scan_results: { scanned: 'latest', duplicates: 'all', errors: 'include' } }
+  });
+  if (r.success) { 
+    toast('Export created! Downloading...', 's'); 
+    if (r.data?.zip_file) {
+      setTimeout(() => downloadFile(r.data.zip_file), 500);
+    }
+    loadAvailableExports();
+  }
+  else { toast(r.error || 'Export failed', 'e'); }
+}
+
+async function exportAllDatasets() {
+  const r = await api('/api/export/datasets', {
+    method: 'POST',
+    json: { filters: {} }
+  });
+  if (r.success) { toast('Export created! Check Export section', 's'); loadAvailableExports(); }
+  else { toast(r.error || 'Export failed', 'e'); }
+}
+
+async function cleanupOldExports() {
+  if (!confirm('Remove export files older than 7 days?')) return;
+  const r = await api('/api/export/cleanup', { method: 'POST' });
+  if (r.success) { toast(`Deleted ${r.data?.deleted_count || 0} old exports`, 's'); loadAvailableExports(); }
+  else { toast(r.error || 'Cleanup failed', 'e'); }
+}
+
+// ═════════════════════════════════════════════════════════════
+// DUPLICATES DETECTOR WITH DIRECTORY SCANNING
+// ═════════════════════════════════════════════════════════════
+async function loadDuplicateDetector() {
+  const container = document.getElementById('duplicates-container');
+  container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)"><div style="font-size:40px;margin-bottom:16px">⏳</div><div style="font-size:14px">Loading duplicate detector...</div></div>';
+  
+  try {
+    // Fetch statistics and duplicate data in parallel
+    const [statsRes, duplicatesRes] = await Promise.all([
+      api('/api/duplicates/statistics'),
+      api('/api/duplicates/all?limit=1000')
+    ]);
+    
+    // Handle errors with detailed messages
+    if (!statsRes.success) {
+      const errMsg = statsRes.error || 'Failed to load statistics';
+      console.error('Stats error:', statsRes);
+      container.innerHTML = `<div style="padding:20px;text-align:center;color:var(--danger)"><strong>Error loading statistics:</strong><br>${esc(errMsg)}</div>`;
+      return;
+    }
+    
+    if (!duplicatesRes.success) {
+      const errMsg = duplicatesRes.error || 'Failed to load duplicates';
+      console.error('Duplicates error:', duplicatesRes);
+      container.innerHTML = `<div style="padding:20px;text-align:center;color:var(--danger)"><strong>Error loading duplicates:</strong><br>${esc(errMsg)}</div>`;
+      return;
+    }
+    
+    const stats = statsRes.data || {};
+    // Handle both array and object response formats
+    let duplicates = [];
+    if (Array.isArray(duplicatesRes.data)) {
+      duplicates = duplicatesRes.data;
+    } else if (duplicatesRes.data && Array.isArray(duplicatesRes.data.duplicates)) {
+      duplicates = duplicatesRes.data.duplicates;
+    } else if (duplicatesRes.data) {
+      duplicates = duplicatesRes.data;
+    }
+    
+    // Build the duplicate detector UI
+    let html = `
+      <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px">
+        
+        <!-- SECTION 1: Directory Scanner -->
+        <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px;margin-bottom:24px">
+          <div style="font-weight:600;color:var(--text-primary);margin-bottom:12px;display:flex;align-items:center;gap:8px">
+            📁 Scan Files & Folders for Duplicates
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:12px">
+            <input type="text" id="scan-directory" placeholder="Enter folder path (e.g., C:\\Users\\Downloads or /home/user/documents)" 
+              style="flex:1;padding:9px 13px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary)" />
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)">
+              <input type="checkbox" id="scan-recursive" checked />
+              Scan subfolders
+            </label>
+          </div>
+          <button class="btn btn-primary" onclick="startSystemScan()" style="width:100%;justify-content:center">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M21 5a2 2 0 0 0-2-2h-4V3a2 2 0 0 0-4 0v2H5a2 2 0 0 0-2 2v3l21 0V5zM3 12h18M5 20h14a2 2 0 0 0 2-2v-3H3v3a2 2 0 0 0 2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            Scan Directory
+          </button>
+          <div id="scan-progress-display" style="margin-top:12px"></div>
+        </div>
+        
+        <!-- SECTION 1B: Search By Filename (System-Wide) -->
+        <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px;margin-bottom:24px">
+          <div style="font-weight:600;color:var(--text-primary);margin-bottom:12px;display:flex;align-items:center;gap:8px">
+            🔍 Search for Duplicate Files by Name
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:12px">
+            <input type="text" id="search-filename" placeholder="Enter filename (e.g., photo.jpg, document.pdf, or *.jpg)" 
+              style="flex:1;padding:9px 13px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary)" />
+          </div>
+          <button class="btn btn-primary" onclick="startFilenameDuplicateSearch()" style="width:100%;justify-content:center">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            Search System for Duplicates
+          </button>
+          <div id="search-progress-display" style="margin-top:12px"></div>
+        </div>
+        
+        <!-- SECTION 2: Statistics Grid -->
+        <div class="stats-grid" style="margin-bottom:24px">
+          <div class="stat-card">
+            <div class="stat-label">Duplicate Groups</div>
+            <div class="stat-value warning" id="stat-dup-groups">${stats.duplicate_groups || 0}</div>
+            <div class="stat-sub">groups found</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Duplicate Files</div>
+            <div class="stat-value" id="stat-dup-files">${stats.duplicate_files || 0}</div>
+            <div class="stat-sub">redundant copies</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Storage Wasted</div>
+            <div class="stat-value danger" id="stat-wasted">${fmtBytes(stats.wasted_storage_bytes || 0)}</div>
+            <div class="stat-sub">can be recovered</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Unique Files</div>
+            <div class="stat-value success" id="stat-unique">${stats.unique_files || 0}</div>
+            <div class="stat-sub">no duplicates</div>
+          </div>
+        </div>
+        
+        <!-- SECTION 3: Search & Filter -->
+        <div style="margin-bottom:16px">
+          <div class="search-bar">
+            <input class="search-input" id="dup-search" placeholder="🔍 Search by filename or location..." style="flex:1" />
+            <button class="btn btn-primary btn-sm" onclick="filterDuplicates()">Search</button>
+            <button class="btn btn-secondary btn-sm" onclick="clearDuplicateSearch()">Clear</button>
+          </div>
+        </div>
+        
+        <!-- SECTION 4: Duplicates List -->
+        <div id="duplicates-list-container" style="max-height:700px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-md);padding:16px;background:var(--bg-raised)">
+    `;
+    
+    if (!duplicates || !duplicates.length) {
+      html += '<div class="empty-state" style="padding:40px"><svg width="40" height="40" fill="none" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.5"/></svg><p>No duplicates found yet. Use the scanner above to find duplicates on your computer.</p></div>';
+    } else {
+      duplicates.forEach((group, idx) => {
+        html += renderDuplicateGroup(group, idx);
+      });
+    }
+    
+    html += `
+        </div>
+      </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Store duplicates globally for filtering
+    window.allDuplicates = duplicates;
+    
+  } catch (e) {
+    container.innerHTML = `<div style="padding:20px;text-align:center;color:var(--danger)">Error: ${esc(e.message)}</div>`;
+    console.error('Duplicate detector error:', e);
+  }
+}
+
+function renderDuplicateGroup(group, idx) {
+  // Support both API response formats
+  const files = group.all_files || group.file_locations || [];
+  const totalSize = files.reduce((sum, f) => sum + (f.file_size || 0), 0);
+  const wastedSize = totalSize - (files[0]?.file_size || 0);
+  const originalFileName = files[0]?.file_name || 'Unknown';
+  
+  return `
+    <div style="background:var(--bg-surface);border:1px solid var(--border-bright);border-radius:var(--radius-md);padding:14px;margin-bottom:10px;cursor:pointer" onclick="toggleDuplicateGroup(${idx})">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div style="flex:1">
+          <!-- File name and type -->
+          <div style="font-weight:600;color:var(--accent);margin-bottom:8px;font-size:13px">📄 ${esc(originalFileName)}</div>
+          
+          <!-- Quick Stats -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;font-size:11px;margin-bottom:4px">
+            <div>📦 <strong>${files.length}</strong> copies</div>
+            <div>💾 <strong>${fmtBytes(totalSize)}</strong> total</div>
+            <div>⚠️ <strong style="color:var(--danger)">${fmtBytes(wastedSize)}</strong> wasted</div>
+            <div>🆔 <strong>${(group.file_hash || 'N/A').slice(0,8)}...</strong> hash</div>
+          </div>
+        </div>
+        <div style="color:var(--accent);font-size:18px;margin-top:2px" id="expand-icon-${idx}">▼</div>
+      </div>
+      
+      <!-- File Details (Initially Hidden) -->
+      <div id="dup-group-${idx}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        ${files.map((f, i) => `
+          <div style="background:var(--bg-raised);border:1px solid var(--border-bright);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;font-size:11px">
+            <!-- File Header with badge -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">
+              <div style="font-weight:600;color:var(--text-primary)">${esc(f.file_name || 'Unknown')}</div>
+              <div style="display:flex;gap:6px">
+                ${i === 0 ? '<span style="background:var(--success);color:white;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">⭐ ORIGINAL</span>' : '<span style="background:var(--warning);color:var(--text-primary);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">📄 COPY</span>'}
+              </div>
+            </div>
+            
+            <!-- All Details Grid -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:10px;font-family:var(--font-mono)">
+              <div>
+                <div style="color:var(--text-secondary);margin-bottom:2px">📁 Path</div>
+                <div style="color:var(--text-primary);word-break:break-all;background:var(--bg-surface);padding:6px;border-radius:3px;border:1px solid var(--border)">${esc(f.file_path || f.file_location || '—')}</div>
+              </div>
+              <div>
+                <div style="color:var(--text-secondary);margin-bottom:2px">📊 Size</div>
+                <div style="color:var(--text-primary);padding:6px;border-radius:3px;border:1px solid var(--border)">${fmtBytes(f.file_size || 0)}</div>
+              </div>
+              <div>
+                <div style="color:var(--text-secondary);margin-bottom:2px">📋 Type</div>
+                <div style="color:var(--text-primary);padding:6px;border-radius:3px;border:1px solid var(--border)">${esc(f.file_type || 'Unknown')}</div>
+              </div>
+              <div>
+                <div style="color:var(--text-secondary);margin-bottom:2px">📅 Created</div>
+                <div style="color:var(--text-primary);padding:6px;border-radius:3px;border:1px solid var(--border)">${fmtDate(f.created_at)}</div>
+              </div>
+            </div>
+            
+            <!-- User info -->
+            <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);color:var(--text-secondary);font-size:9px">
+              👤 ${esc(f.user_name || f.user_id || 'System')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+async function startSystemScan() {
+  const directory = document.getElementById('scan-directory')?.value?.trim();
+  if (!directory) {
+    toast('Please enter a directory path', 'warning');
+    return;
+  }
+  
+  const recursive = document.getElementById('scan-recursive')?.checked;
+  const progressDiv = document.getElementById('scan-progress-display');
+  const btn = event?.target?.closest('button');
+  
+  // Show progress
+  btn.disabled = true;
+  btn.textContent = 'Scanning...';
+  progressDiv.innerHTML = '<div style="text-align:center;padding:12px"><div style="animation: progress-anim 1.4s infinite; display:inline-block">⟳</div> Scanning for files...</div>';
+  
+  try {
+    const result = await api('/api/duplicates/scan-directory', {
+      method: 'POST',
+      json: {
+        directory,
+        recursive: recursive || false
+      }
+    });
+    
+    btn.disabled = false;
+    btn.textContent = '📁 Scan Directory';
+    
+    if (!result.success) {
+      progressDiv.innerHTML = `<div style="color:var(--danger);padding:12px;text-align:center">❌ ${esc(result.error || 'Scan failed')}</div>`;
+      return;
+    }
+    
+    // Update statistics
+    document.getElementById('stat-dup-groups').textContent = result.data.total_duplicates || 0;
+    document.getElementById('stat-dup-files').textContent = result.data.total_duplicate_files || 0;
+    document.getElementById('stat-wasted').textContent = fmtBytes(result.data.duplicate_size_bytes || 0);
+    
+    // Display scan results
+    let resultHtml = `
+      <div style="background:linear-gradient(135deg, rgba(0,212,255,.1), rgba(0,212,255,.05));border:1px solid var(--accent-dim);border-radius:var(--radius-md);padding:14px;margin-bottom:16px">
+        <div style="font-weight:600;color:var(--accent);margin-bottom:8px">✓ Scan Complete</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;font-size:11px">
+          <div>📁 <strong>${result.data.scanned_files}</strong> files scanned</div>
+          <div>🎯 <strong>${result.data.total_duplicates}</strong> duplicate groups</div>
+          <div>📦 <strong>${result.data.total_duplicate_files}</strong> duplicate files</div>
+          <div>💾 <strong>${fmtBytes(result.data.duplicate_size_bytes)}</strong> wasted storage</div>
+        </div>
+      </div>
+    `;
+    
+    if (result.data.duplicate_groups?.length) {
+      resultHtml += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px"><strong>Duplicates Found:</strong></div>';
+      result.data.duplicate_groups.forEach((group, idx) => {
+        resultHtml += renderDuplicateGroup(group, 'scan_' + idx);
+      });
+    } else {
+      resultHtml += '<div class="empty-state"><p>✓ No duplicates found in this directory!</p></div>';
+    }
+    
+    // Store for later use
+    window.lastScanDuplicates = result.data.duplicate_groups || [];
+    
+    progressDiv.innerHTML = resultHtml;
+    toast(`Found ${result.data.total_duplicates} duplicate group(s)`, 'success');
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = '📁 Scan Directory';
+    progressDiv.innerHTML = `<div style="color:var(--danger);padding:12px;text-align:center">Error: ${esc(e.message)}</div>`;
+    console.error('Scan error:', e);
+  }
+}
+
+async function startFilenameDuplicateSearch() {
+  const filename = document.getElementById('search-filename')?.value?.trim();
+  if (!filename) {
+    toast('Please enter a filename to search', 'warning');
+    return;
+  }
+  
+  const progressDiv = document.getElementById('search-progress-display');
+  const btn = event?.target?.closest('button');
+  
+  // Show progress
+  btn.disabled = true;
+  btn.textContent = 'Searching...';
+  progressDiv.innerHTML = '<div style="text-align:center;padding:12px"><div style="animation: progress-anim 1.4s infinite; display:inline-block">⟳</div> Searching system for files...</div>';
+  
+  try {
+    const result = await api('/api/duplicates/search-by-filename', {
+      method: 'POST',
+      json: {
+        filename: filename,
+        search_paths: null  // Will use default system paths
+      }
+    });
+    
+    btn.disabled = false;
+    btn.textContent = '🔍 Search System for Duplicates';
+    
+    if (!result.success) {
+      progressDiv.innerHTML = `<div style="color:var(--danger);padding:12px;text-align:center">❌ ${esc(result.error || 'Search failed')}</div>`;
+      return;
+    }
+    
+    // Display search results with detailed file information
+    let resultHtml = `
+      <div style="background:linear-gradient(135deg, rgba(0,212,255,.1), rgba(0,212,255,.05));border:1px solid var(--accent-dim);border-radius:var(--radius-md);padding:14px;margin-bottom:16px">
+        <div style="font-weight:600;color:var(--accent);margin-bottom:8px">🔍 Search Results for: <strong>"${esc(filename)}"</strong></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:12px;font-size:11px">
+          <div>📋 <strong>${result.data.total_files}</strong> files found</div>
+          <div>🎯 <strong>${result.data.duplicate_groups.length}</strong> duplicate groups</div>
+          <div>📦 <strong>${result.data.total_duplicates}</strong> duplicate copies</div>
+          <div>💾 <strong>${fmtBytes(result.data.total_size_bytes)}</strong> total size</div>
+        </div>
+      </div>
+    `;
+    
+    if (result.data.duplicate_groups?.length) {
+      resultHtml += '<div style="margin-bottom:12px"><strong style="color:var(--accent)">🎯 Duplicate Groups:</strong></div>';
+      result.data.duplicate_groups.forEach((group, idx) => {
+        resultHtml += `
+          <div style="background:var(--bg-surface);border:1px solid var(--border-bright);border-radius:var(--radius-md);padding:14px;margin-bottom:12px;cursor:pointer" onclick="toggleSearchGroup('search_${idx}')">
+            <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+              <div>
+                <div style="font-weight:600;color:var(--accent);margin-bottom:4px">
+                  📋 ${esc(group.file_name)}
+                </div>
+                <div style="font-size:11px;color:var(--text-secondary)">
+                  Type: <strong>${esc(group.file_type)}</strong> • 
+                  Copies: <strong>${group.total_copies}</strong> • 
+                  Total: <strong>${fmtBytes(group.total_storage_used)}</strong> • 
+                  Wasted: <strong style="color:var(--danger)">${fmtBytes(group.storage_wasted)}</strong>
+                </div>
+              </div>
+              <div style="color:var(--accent);font-size:18px" id="expand-search-${idx}">▼</div>
+            </div>
+            
+            <!-- Files Details -->
+            <div id="search_${idx}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+              ${(group.all_files || group.files || group.file_locations || []).map((f, i) => `
+                <div style="background:var(--bg-raised);border:1px dashed var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:8px;font-size:11px">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                    <div style="font-weight:500;color:var(--text-primary)">
+                      ${i === 0 ? '⭐ Original' : '📄 Copy'} - ${esc(f.file_name)}
+                    </div>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:8px;color:var(--text-secondary)">
+                    <div>
+                      <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">FILE TYPE</div>
+                      <strong>${esc(f.file_type || '.unknown')}</strong>
+                    </div>
+                    <div>
+                      <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">FILE SIZE</div>
+                      <strong>${fmtBytes(f.file_size)}</strong>
+                    </div>
+                    <div style="grid-column:1/-1">
+                      <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">LOCATION</div>
+                      <strong style="word-break:break-all">${esc(f.file_path || f.file_location || '—')}</strong>
+                    </div>
+                    <div style="grid-column:1/-1">
+                      <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">CREATED</div>
+                      <strong>${fmtDate(f.created_at)}</strong>
+                    </div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      });
+    } else if (result.data.files_found?.length) {
+      resultHtml += '<div style="margin-bottom:12px"><strong style="color:var(--accent)">📋 Files Found (No Duplicates):</strong></div>';
+      result.data.files_found.forEach((f) => {
+        resultHtml += `
+          <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:8px;font-size:11px">
+            <div style="margin-bottom:6px">
+              <span class="badge badge-success">✓ ${esc(f.file_name)}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:8px;color:var(--text-secondary)">
+              <div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">FILE TYPE</div>
+                <strong>${esc(f.file_type || '.unknown')}</strong>
+              </div>
+              <div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">FILE SIZE</div>
+                <strong>${fmtBytes(f.file_size)}</strong>
+              </div>
+              <div style="grid-column:1/-1">
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">LOCATION</div>
+                <strong style="word-break:break-all">${esc(f.file_location)}</strong>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    } else {
+      resultHtml += '<div class="empty-state"><p>No files found matching this name.</p></div>';
+    }
+    
+    progressDiv.innerHTML = resultHtml;
+    toast(`Found ${result.data.total_files} file(s), ${result.data.duplicate_groups.length} duplicate group(s)`, 'success');
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = '🔍 Search System for Duplicates';
+    progressDiv.innerHTML = `<div style="color:var(--danger);padding:12px;text-align:center">Error: ${esc(e.message)}</div>`;
+    console.error('Search error:', e);
+  }
+}
+
+function toggleSearchGroup(id) {
+  const el = document.getElementById(id);
+  const pattern = /expand-search-(\d+)/;
+  const match = id.match(/search_(\d+)/);
+  if (match && el) {
+    const idx = match[1];
+    const icon = document.getElementById(`expand-search-${idx}`);
+    const isHidden = el.style.display === 'none';
+    el.style.display = isHidden ? 'block' : 'none';
+    if (icon) icon.textContent = isHidden ? '▲' : '▼';
+  }
+}
+
+function toggleDuplicateGroup(idx) {
+  const el = document.getElementById(`dup-group-${idx}`);
+  const icon = document.getElementById(`expand-icon-${idx}`);
+  if (el) {
+    const isHidden = el.style.display === 'none';
+    el.style.display = isHidden ? 'block' : 'none';
+    if (icon) icon.textContent = isHidden ? '▲' : '▼';
+  }
+}
+
+function filterDuplicates() {
+  const query = document.getElementById('dup-search')?.value?.toLowerCase().trim() || '';
+  if (!query) { loadDuplicateDetector(); return; }
+  
+  const allGroups = [...(window.allDuplicates || []), ...(window.lastScanDuplicates || [])];
+  const filtered = allGroups.filter(group => {
+    const files = group.all_files || group.file_locations || [];
+    return files.some(f => 
+      (f.file_name || '').toLowerCase().includes(query) ||
+      (f.file_path || f.file_location || '').toLowerCase().includes(query)
+    );
+  });
+  
+  // Re-render with filtered results
+  const container = document.getElementById('duplicates-list-container');
+  let html = `<div style="margin-bottom:12px;font-size:12px;color:var(--accent)">🔍 Results: <strong>${filtered.length} duplicate group(s)</strong> found</div>`;
+  
+  if (!filtered.length) {
+    html += '<div class="empty-state"><p>No duplicates match your search.</p></div>';
+  } else {
+    filtered.forEach((group, idx) => {
+      html += renderDuplicateGroup(group, 'filter_' + idx);
+    });
+  }
+  
+  container.innerHTML = html;
+}
+
+function clearDuplicateSearch() {
+  document.getElementById('dup-search').value = '';
+  loadDuplicateDetector();
+}
+
+async function loadAvailableExports() {
+  const r = await api('/api/export/list');
+  const list = document.getElementById('exports-list');
+  if (!r.success || !r.data?.length) {
+    list.innerHTML = '<div class="empty-state"><p>No exports available yet.</p></div>';
+    return;
+  }
+  list.innerHTML = r.data.map(exp => `
+    <div style="padding:10px;background:var(--bg-raised);border-radius:var(--radius-md);display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div>
+        <div style="font-weight:500">${exp.filename}</div>
+        <div style="font-size:11px;color:var(--text-secondary)">${exp.size_mb.toFixed(1)} MB · ${new Date(exp.created_at).toLocaleString()}</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="downloadFile('${exp.filename}')">📥 Download</button>
+    </div>
+  `).join('');
+}
+
+function downloadFile(filename) {
+  try {
+    const link = document.createElement('a');
+    link.href = `/api/export/download?file=${encodeURIComponent(filename)}`;
+    link.download = filename;
+    link.setAttribute('target', '_blank');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast(`Downloading: ${filename}`, 'success');
+  } catch (e) {
+    console.error('Download error:', e);
+    window.open(`/api/export/download?file=${encodeURIComponent(filename)}`);
+  }
+}
+
+function openScanner() {
+  navigate('scanner');
+  setTimeout(() => document.getElementById('scanner-path')?.focus(), 100);
+}
+
+// ═════════════════════════════════════════════════════════════
+// UTILITIES
+// ═════════════════════════════════════════════════════════════
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtBytes(b) {
+  if (b === 0) return '0 B';
+  const u = ['B','KB','MB','GB'];
+  const i = Math.floor(Math.log(b) / Math.log(1024));
+  return (b / Math.pow(1024, i)).toFixed(i ? 1 : 0) + ' ' + u[i];
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const now = new Date();
+  const diff = (now - d) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  return d.toLocaleDateString();
+}
+
+function renderMarkdown(text) {
+  return esc(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/^#{1,3}\s(.+)/gm, '<strong style="color:var(--accent)">$1</strong>')
+    .replace(/\n/g, '<br>');
+}
+
+function toast(message, type = 'info') {
+  const el = document.createElement('div');
+  const icons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span style="color:${type==='success'?'var(--success)':type==='error'?'var(--danger)':type==='warning'?'var(--warning)':'var(--accent)'}">${icons[type]||'·'}</span> ${esc(message)}`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.style.opacity = '0', 3200);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// Poll for new alerts every 30s
+setInterval(loadAlertCount, 30000);
+</script>
+</body>
+</html>
