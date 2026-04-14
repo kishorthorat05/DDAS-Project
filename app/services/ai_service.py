@@ -1,49 +1,48 @@
 """
 AI service powered by Google Generative AI (Gemini).
-Provides: file insight generation and conversational chat.
-Falls back to rule-based responses when API key is absent.
+Provides file insight generation, universal conversational chat,
+and safe project actions triggered from chat commands.
 """
-import json
 import os
+import re
 from pathlib import Path
-from typing import Any
 
-import google.generativeai as genai
 from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 
+from app.models.database import get_db
+from app.services.analytics_service import get_dashboard_stats, get_system_health
+from app.services.dataset_service import AlertService, DatasetService, ScanLogService
+from app.services.monitor_service import manual_scan, monitor_status, start_monitor, stop_monitor
 from config.settings import get_config
 
-# Ensure .env is loaded with absolute path to avoid directory issues
+# Ensure .env is loaded with an absolute path to avoid directory issues.
 _project_root = Path(__file__).resolve().parent.parent.parent
 _env_file = _project_root / ".env"
-load_dotenv(_env_file, override=True)  # Explicitly load .env with absolute path
+load_dotenv(_env_file, override=True)
 
 Config = get_config()
 
-# ─────────────────────────── Client ──────────────────────────────────────────
 
 def _get_api_key() -> str:
-    """Always read directly from env at call time. Reload .env to ensure fresh key."""
-    # Double-check by reloading .env at call time
-    _project_root = Path(__file__).resolve().parent.parent.parent
-    _env_file = _project_root / ".env"
+    """Always read directly from env at call time."""
     load_dotenv(_env_file, override=True)
-    
     return (os.getenv("GOOGLE_API_KEY") or "").strip()
 
 
 def _get_model() -> str:
-    """Always read model name directly from env at call time."""
-    return (os.getenv("GOOGLE_MODEL") or "gemini-1.5-flash").strip()
+    """Always read the model name directly from env at call time."""
+    return (os.getenv("GOOGLE_MODEL") or "gemini-2.5-flash").strip()
 
 
 def _configure_client() -> bool:
-    """Configure the Google Generative AI client. Returns True if configured successfully."""
+    """Validate that Gemini client configuration is usable."""
     key = _get_api_key()
     if not key or len(key) < 20:
         return False
     try:
-        genai.configure(api_key=key)
+        genai.Client(api_key=key)
         return True
     except Exception:
         return False
@@ -54,42 +53,33 @@ def is_api_configured() -> bool:
     return bool(key) and len(key) >= 20
 
 
-# ─────────────────────────── System prompts ──────────────────────────────────
+def _get_client() -> genai.Client:
+    """Create a fresh Gemini client from the current environment."""
+    return genai.Client(api_key=_get_api_key())
 
-_CHAT_SYSTEM = """You are IAS Chatbot, a friendly and knowledgeable AI assistant for the Data Download Duplication Alert System (DDAS).
 
-Your Personality:
-- You're conversational and approachable, like a helpful colleague, not a rigid bot
-- You use natural language with occasional emojis and varied sentence structure
-- You show genuine interest in helping users succeed with their data management
-- You explain technical concepts in relatable ways, using real-world analogies when helpful
-- You're patient with beginners but can provide advanced insights for experienced users
+_CHAT_SYSTEM = """You are IAS Chatbot, a smart, human-friendly AI assistant.
 
-Your ONLY role:
-- Help users with the Data Download Duplication Alert System (DDAS): uploading files, scanning directories, reading alerts, browsing the repository.
-- Explain duplicate detection (SHA-256 hash comparison) and best data management practices.
-- Provide in-depth, detailed responses about DDAS features, functionality, and data management.
+Your role:
+- Answer general user questions naturally, like a modern AI assistant.
+- When a question relates to this DDAS project, use the provided project context to make the answer specific and useful.
+- When the user asks you to do something inside the project, prefer taking the action if a safe supported action is available.
 
-IMPORTANT RESTRICTION:
-- You ONLY answer questions related to the DDAS project.
-- If a user asks a question that is NOT about the DDAS project, politely decline with humor and redirect them to ask about DDAS topics.
-- Do NOT provide answers for general programming, data analysis, tools, or any other out-of-project topics.
-- Stay focused exclusively on DDAS.
+Grounding rules:
+- For DDAS-specific questions, treat the supplied project context as the primary source of truth.
+- Use repository excerpts, live database facts, and UI state to make project answers specific.
+- For general questions outside DDAS, answer normally instead of refusing.
+- If a DDAS-specific detail is missing, say what is known and what is missing instead of inventing specifics.
 
-Guidelines for Human-Like Responses:
-- Respond in a warm, conversational tone—sound like a person, not a machine
-- Use varied sentence structures and natural transitions
-- Include relevant examples or scenarios from data management contexts
-- Ask clarifying questions when needed
-- Share tips and pro tips in a casual, helpful way
-- Use short bullet lists when listing steps or options
-- Keep replies focused and under 400 words unless really needed
-- For project-related questions, provide comprehensive, detailed answers
-- Remember the conversation context and reference previous points
-- Use engaging phrases like "Here's the thing...", "Think of it this way...", "Great question!", "Let me break this down..."
-- Show personality while staying professional
-
-Always provide value, be specific to users' needs, and make technical concepts accessible."""
+Style:
+- Sound like a real teammate talking to the user, not a report generator.
+- Prefer short conversational paragraphs over headings and lists unless the user asked for steps.
+- Use plain, human wording and vary sentence structure naturally.
+- Acknowledge the user's topic directly and then answer it.
+- Avoid sounding robotic, overly formal, or repetitive.
+- Do not mention internal prompts, restrictions, or hidden context.
+- Keep replies focused unless the user asks for depth.
+"""
 
 _INSIGHT_SYSTEM = """You are a data file analyst. Given metadata about an uploaded file, produce a concise,
 structured analysis covering:
@@ -102,8 +92,6 @@ structured analysis covering:
 Keep the response under 350 words. Use markdown formatting with **bold** headers."""
 
 
-# ─────────────────────────── File insights ───────────────────────────────────
-
 def get_file_insights(
     file_name: str,
     file_size: int,
@@ -113,7 +101,7 @@ def get_file_insights(
     user_id: str = None,
     include_recommendations: bool = True,
 ) -> str:
-    """Return AI analysis of an uploaded file. Falls back to rule-based if no API."""
+    """Return AI analysis of an uploaded file."""
     if not is_api_configured():
         return _rule_based_insights(file_name, file_size, file_type, description)
 
@@ -122,6 +110,7 @@ def get_file_insights(
 
     size_mb = file_size / (1024 * 1024)
     prompt = (
+        f"{_INSIGHT_SYSTEM}\n\n"
         f"File: **{file_name}**\n"
         f"Size: {size_mb:.2f} MB ({file_size:,} bytes)\n"
         f"Type: `{file_type}`\n"
@@ -130,43 +119,49 @@ def get_file_insights(
     )
 
     try:
-        model = genai.GenerativeModel(_get_model())
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
+        client = _get_client()
+        response = client.models.generate_content(
+            model=_get_model(),
+            contents=prompt,
+            config=types.GenerateContentConfig(
                 max_output_tokens=Config.AI_MAX_TOKENS,
                 temperature=0.7,
-            )
+                http_options=types.HttpOptions(timeout=20_000),
+            ),
         )
-        insights = ""
-        if response and response.text:
-            insights = response.text
-        else:
+        insights = getattr(response, "text", "") or ""
+        if not insights:
             insights = _rule_based_insights(file_name, file_size, file_type, description)
-        
-        # Add recommendations if requested
+
         if include_recommendations and file_hash and user_id:
             try:
                 from app.services import recommendation_service
+
                 recs = recommendation_service.generate_recommendations(
-                    user_id, "", file_hash, file_name, file_type,
-                    {"description": description}
+                    user_id,
+                    "",
+                    file_hash,
+                    file_name,
+                    file_type,
+                    {"description": description},
                 )
                 if recs:
-                    insights += "\n\n---\n\n### 💡 Recommended Related Datasets\n\n"
-                    for i, rec in enumerate(recs[:3], 1):
-                        insights += f"{i}. **{rec['recommendation_type']}**: {rec['reason']}\n"
-                        insights += f"   - Confidence: {rec['confidence_score']:.1%}\n"
+                    insights += "\n\n---\n\n### Recommended Related Datasets\n\n"
+                    for index, rec in enumerate(recs[:3], 1):
+                        insights += (
+                            f"{index}. **{rec['recommendation_type']}**: {rec['reason']}\n"
+                            f"   - Confidence: {rec['confidence_score']:.1%}\n"
+                        )
             except Exception:
-                pass  # Silently fail if recommendation service issues
-        
+                pass
+
         return insights
     except Exception as exc:
-        return f"⚠️ AI analysis unavailable ({exc}).\n\n" + \
-               _rule_based_insights(file_name, file_size, file_type, description)
+        return (
+            f"AI analysis unavailable ({exc}).\n\n"
+            + _rule_based_insights(file_name, file_size, file_type, description)
+        )
 
-
-# ─────────────────────────── Chat ────────────────────────────────────────────
 
 def chat(
     message: str,
@@ -174,191 +169,431 @@ def chat(
     context: str = "",
 ) -> str:
     """
-    Send a message to Gemini with full conversation history.
-    history: list of {"role": "user"|"assistant", "content": "..."}
-    Returns assistant reply string.
-    ALWAYS tries Gemini API first. Only falls back if API is truly unavailable.
+    Send a message to Gemini with conversation history.
+    Falls back to a grounded local response when API access is unavailable.
     """
-    # Get fresh API key (reloads .env)
+    project_context = _build_chat_context(message, context)
+
     key = _get_api_key()
     print(f"[CHAT] API Key available: {bool(key)}, length: {len(key) if key else 0}")
-    
-    if not key or len(key) < 20:
-        print(f"[CHAT] No API key available, using fallback")
-        return _rule_based_chat(message)
 
-    # Configure Gemini client
+    if not key or len(key) < 20:
+        print("[CHAT] No API key available, using grounded fallback")
+        return _grounded_fallback_chat(message, history, project_context)
+
     if not _configure_client():
-        print(f"[CHAT] Client config failed, using fallback")
-        return _rule_based_chat(message)
+        print("[CHAT] Client config failed, using grounded fallback")
+        return _grounded_fallback_chat(message, history, project_context)
 
     print(f"[CHAT] Attempting Gemini API call with model: {_get_model()}")
-    
+
     system = _CHAT_SYSTEM
-    if context:
-        system += f"\n\nCurrent UI context:\n{context}"
+    if project_context:
+        system += f"\n\nProject context:\n{project_context}"
 
-    # Build messages — Gemini API expects alternating user/model roles
-    messages = []
-    for turn in history[-18:]:  # keep last 18 turns (9 exchanges)
+    transcript_parts = [system]
+    for turn in history[-18:]:
         if turn.get("role") in ("user", "assistant") and turn.get("content"):
-            # Convert assistant role to "model" for Google API
-            role = "model" if turn["role"] == "assistant" else "user"
-            messages.append({"role": role, "parts": [turn["content"]]})
-
-    messages.append({"role": "user", "parts": [message]})
+            speaker = "Assistant" if turn["role"] == "assistant" else "User"
+            transcript_parts.append(f"{speaker}: {turn['content']}")
+    transcript_parts.append(f"User: {message}")
+    prompt = "\n\n".join(transcript_parts)
 
     try:
-        model = genai.GenerativeModel(
-            _get_model(),
-            system_instruction=system
-        )
-        print(f"[CHAT] Model created, calling API...")
-        
-        response = model.generate_content(
-            messages,
-            generation_config=genai.types.GenerationConfig(
+        client = _get_client()
+        response = client.models.generate_content(
+            model=_get_model(),
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system,
                 max_output_tokens=Config.AI_MAX_TOKENS,
-                temperature=0.8,
+                temperature=0.85,
                 top_p=0.95,
                 top_k=64,
+                http_options=types.HttpOptions(timeout=20_000),
+                safety_settings=[
+                    types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+                    types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
+                    types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                    types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
+                ],
             ),
-            safety_settings=[
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            ]
         )
-        
-        if response and response.text:
+
+        if response and getattr(response, "text", ""):
             reply = response.text.strip()
             print(f"[CHAT] SUCCESS: Gemini response {len(reply)} chars")
             return reply
-        else:
-            print(f"[CHAT] Empty Gemini response, using fallback")
-            return _rule_based_chat(message)
-            
+
+        print("[CHAT] Empty Gemini response, using grounded fallback")
+        return _grounded_fallback_chat(message, history, project_context)
     except Exception as exc:
-        print(f"[CHAT] API ERROR: {type(exc).__name__}: {str(exc)[:80]}")
-        import traceback
-        traceback.print_exc()
-        return _rule_based_chat(message)
+        print(f"[CHAT] API ERROR: {type(exc).__name__}: {str(exc)[:120]}")
+        return _grounded_fallback_chat(message, history, project_context)
 
 
-# ─────────────────────────── Rule-based fallback ─────────────────────────────
+def execute_chat_action(
+    message: str,
+    user_role: str = "",
+    username: str = "",
+) -> str | None:
+    """Execute supported project actions from chat requests."""
+    action = _detect_chat_action(message)
+    if not action:
+        return None
+
+    kind = action["kind"]
+    role = (user_role or "").lower()
+
+    try:
+        if kind == "monitor_status":
+            status = monitor_status()
+            running = "running" if status.get("running") else "stopped"
+            return (
+                f"The monitor is currently {running}. "
+                f"It's watching `{status.get('directory', Config.MONITORED_DIR)}`."
+            )
+
+        if kind == "start_monitor":
+            if role not in {"admin", "operator"}:
+                return "I can see the request, but starting the monitor is only allowed for admin or operator users."
+            started = start_monitor(action.get("directory"))
+            if started:
+                target_dir = action.get("directory") or Config.MONITORED_DIR
+                return f"The monitor is now running and watching `{target_dir}`."
+            return "The monitor was already running, so there was nothing new to start."
+
+        if kind == "stop_monitor":
+            if role != "admin":
+                return "Stopping the monitor is restricted to admin users."
+            stop_monitor()
+            return "The monitor has been stopped."
+
+        if kind == "scan":
+            directory = action.get("directory")
+            result = manual_scan(directory)
+            if result.get("error"):
+                return f"I tried to run the scan, but it failed: {result['error']}"
+            return (
+                f"Scan finished for `{result.get('directory')}`. "
+                f"I checked {result.get('scanned', 0)} files, found {result.get('duplicates', 0)} duplicates, "
+                f"and hit {result.get('errors', 0)} errors."
+            )
+
+        if kind == "dashboard":
+            stats = get_dashboard_stats()
+            return (
+                f"Right now DDAS has {stats.get('total_datasets', 0)} datasets and "
+                f"{stats.get('duplicates_detected', 0)} detected duplicates. "
+                f"There are {stats.get('unread_alerts', 0)} unread alerts, and about "
+                f"{stats.get('total_storage_gb', 0):.2f} GB stored."
+            )
+
+        if kind == "system_health":
+            health = get_system_health()
+            return (
+                f"System health looks like this: database is `{health.get('database_status')}`, "
+                f"pending alerts are {health.get('pending_alerts', 0)}, and scan errors in the last 24 hours are "
+                f"{health.get('errors_24h', 0)}."
+            )
+
+        if kind == "recent_datasets":
+            items = DatasetService.get_all(limit=5, offset=0)
+            if not items:
+                return "There aren't any datasets in the repository yet."
+            names = ", ".join(f"{item['file_name']} ({item.get('file_type') or 'unknown'})" for item in items)
+            return f"The most recent datasets are: {names}."
+
+        if kind == "alerts":
+            unread_only = bool(action.get("unread_only"))
+            alerts = AlertService.get_all(unread_only=unread_only, limit=5)
+            if not alerts:
+                return "There are no matching alerts right now."
+            titles = ", ".join(f"{item['title']} [{item.get('severity', 'info')}]" for item in alerts)
+            if unread_only:
+                return f"The latest unread alerts are: {titles}."
+            return f"The latest alerts are: {titles}."
+
+        if kind == "scan_logs":
+            logs = ScanLogService.get_recent(limit=5)
+            if not logs:
+                return "There are no recent scan logs yet."
+            lines = ", ".join(
+                f"{log.get('file_name') or Path(log.get('file_path', '')).name or 'unknown file'}"
+                f"{' (duplicate)' if log.get('is_duplicate') else ''}"
+                for log in logs
+            )
+            return f"The latest scan activity includes: {lines}."
+    except Exception as exc:
+        return f"I tried to run that project action, but it failed: {exc}"
+
+    return None
+
+
+def _tokenize_for_search(text: str) -> list[str]:
+    tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9_+-]{2,}", text.lower())
+    stop_words = {
+        "about", "after", "again", "also", "any", "are", "can", "chat", "could",
+        "data", "ddas", "does", "for", "from", "give", "how", "into", "like", "more",
+        "need", "not", "project", "relative", "response", "should", "static", "system",
+        "that", "the", "their", "them", "there", "this", "use", "what", "when", "with",
+        "you", "your",
+    }
+    unique: list[str] = []
+    for token in tokens:
+        if token in stop_words or token in unique:
+            continue
+        unique.append(token)
+    return unique[:8]
+
+
+def _extract_directory(message: str) -> str | None:
+    patterns = [
+        r"(?:in|for|on|from)\s+([A-Za-z]:\\[^\n]+)",
+        r"(?:in|for|on|from)\s+([.]{0,2}[\\/][^\n]+)",
+        r"(?:in|for|on|from)\s+([A-Za-z0-9_./\\-]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, message)
+        if match:
+            return match.group(1).strip().strip(' ."\'')
+    return None
+
+
+def _detect_chat_action(message: str) -> dict | None:
+    text = message.strip()
+    lowered = text.lower()
+
+    if any(phrase in lowered for phrase in ("monitor status", "status of monitor", "is monitor running")):
+        return {"kind": "monitor_status"}
+
+    if any(phrase in lowered for phrase in ("start monitor", "turn on monitor", "enable monitor")):
+        return {"kind": "start_monitor", "directory": _extract_directory(text)}
+
+    if any(phrase in lowered for phrase in ("stop monitor", "turn off monitor", "disable monitor")):
+        return {"kind": "stop_monitor"}
+
+    if re.search(r"\b(scan|run scan|scan folder|scan directory|scan downloads)\b", lowered):
+        return {"kind": "scan", "directory": _extract_directory(text)}
+
+    if any(phrase in lowered for phrase in ("dashboard stats", "show dashboard", "analytics summary", "project stats")):
+        return {"kind": "dashboard"}
+
+    if any(phrase in lowered for phrase in ("system health", "health status", "check health")):
+        return {"kind": "system_health"}
+
+    if any(phrase in lowered for phrase in ("recent datasets", "show datasets", "list datasets", "latest datasets")):
+        return {"kind": "recent_datasets"}
+
+    if any(phrase in lowered for phrase in ("unread alerts", "show unread alerts")):
+        return {"kind": "alerts", "unread_only": True}
+
+    if any(phrase in lowered for phrase in ("show alerts", "latest alerts", "list alerts")):
+        return {"kind": "alerts", "unread_only": False}
+
+    if any(phrase in lowered for phrase in ("scan logs", "recent scans", "latest scans")):
+        return {"kind": "scan_logs"}
+
+    return None
+
+
+def _safe_read_text(path: Path, max_chars: int = 7000) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="ignore")[:max_chars]
+    except Exception:
+        return ""
+
+
+def _candidate_context_files() -> list[Path]:
+    candidates = [
+        _project_root / "README.md",
+        _project_root / "FEATURES.md",
+        _project_root / "QUICK_START.md",
+        _project_root / "CHATBOT_GUIDE.md",
+        _project_root / "app" / "api" / "routes.py",
+        _project_root / "app" / "services" / "ai_service.py",
+        _project_root / "app" / "services" / "dataset_service.py",
+        _project_root / "app" / "services" / "monitor_service.py",
+        _project_root / "app" / "services" / "analytics_service.py",
+        _project_root / "app" / "models" / "database.py",
+        _project_root / "static" / "index.html",
+    ]
+    return [path for path in candidates if path.exists()]
+
+
+def _extract_relevant_snippets(message: str) -> list[str]:
+    tokens = _tokenize_for_search(message)
+    scored: list[tuple[int, str]] = []
+
+    for path in _candidate_context_files():
+        text = _safe_read_text(path)
+        if not text:
+            continue
+
+        lowered_text = text.lower()
+        file_score = sum(lowered_text.count(token) for token in tokens) if tokens else 0
+        if tokens and file_score == 0:
+            continue
+
+        snippets: list[str] = []
+        lines = text.splitlines()
+        for index, line in enumerate(lines):
+            lowered_line = line.lower()
+            if not tokens or any(token in lowered_line for token in tokens):
+                start = max(0, index - 1)
+                end = min(len(lines), index + 2)
+                excerpt = " ".join(part.strip() for part in lines[start:end] if part.strip())
+                excerpt = re.sub(r"\s+", " ", excerpt)
+                if excerpt and excerpt not in snippets:
+                    snippets.append(excerpt[:260])
+            if len(snippets) >= 2:
+                break
+
+        if not snippets and not tokens:
+            fallback_excerpt = re.sub(r"\s+", " ", text)[:260]
+            if fallback_excerpt:
+                snippets.append(fallback_excerpt)
+
+        for snippet in snippets:
+            scored.append((file_score + 1, f"{path.relative_to(_project_root)}: {snippet}"))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [snippet for _, snippet in scored[:6]]
+
+
+def _fetch_live_project_state() -> list[str]:
+    context_parts: list[str] = []
+    try:
+        with get_db() as conn:
+            totals = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_datasets,
+                    COALESCE(SUM(file_size), 0) AS total_size,
+                    COUNT(DISTINCT file_type) AS file_types
+                FROM datasets
+                """
+            ).fetchone()
+            if totals:
+                context_parts.append(
+                    "Repository stats: "
+                    f"{totals['total_datasets']} datasets, "
+                    f"{totals['file_types']} file types, "
+                    f"{totals['total_size']} bytes stored."
+                )
+
+            recent_files = conn.execute(
+                """
+                SELECT file_name, file_type, user_name, created_at
+                FROM datasets
+                ORDER BY created_at DESC
+                LIMIT 5
+                """
+            ).fetchall()
+            if recent_files:
+                recent_summary = ", ".join(
+                    f"{row['file_name']} ({row['file_type'] or 'unknown'}, by {row['user_name']})"
+                    for row in recent_files
+                )
+                context_parts.append(f"Recent datasets: {recent_summary}.")
+
+            recent_alerts = conn.execute(
+                """
+                SELECT title, severity
+                FROM alerts
+                ORDER BY created_at DESC
+                LIMIT 3
+                """
+            ).fetchall()
+            if recent_alerts:
+                alert_summary = ", ".join(
+                    f"{row['title']} [{row['severity']}]"
+                    for row in recent_alerts
+                )
+                context_parts.append(f"Recent alerts: {alert_summary}.")
+    except Exception as exc:
+        context_parts.append(f"Live database context unavailable: {type(exc).__name__}.")
+
+    return context_parts
+
+
+def _build_chat_context(message: str, ui_context: str = "") -> str:
+    context_parts = _fetch_live_project_state()
+    snippets = _extract_relevant_snippets(message)
+
+    if snippets:
+        context_parts.append("Relevant repository excerpts:")
+        context_parts.extend(f"- {snippet}" for snippet in snippets)
+
+    if ui_context:
+        context_parts.append(f"UI context: {ui_context}")
+
+    return "\n".join(context_parts[:14])
+
+
+def _grounded_fallback_chat(message: str, history: list[dict[str, str]], project_context: str) -> str:
+    lowered = message.lower()
+
+    if any(word in lowered for word in ("hello", "hi", "hey")):
+        return "Hi. I'm here and ready to help. Ask me anything, and if Gemini is available you'll get a full dynamic reply."
+
+    if any(word in lowered for word in ("upload", "file", "import")):
+        return (
+            "You can upload a file from the Upload section of the app. "
+            "Choose the file, submit it, and DDAS will hash it, check for duplicates, "
+            "store the metadata, and generate AI insights when Gemini is available."
+        )
+
+    if any(word in lowered for word in ("duplicate", "duplicates", "hash", "same file")):
+        return (
+            "DDAS checks duplicates by generating a SHA-256 hash for each file and comparing it with files already in the repository. "
+            "If the hash matches an existing file, the system flags it as a duplicate."
+        )
+
+    return (
+        "I couldn't get a live Gemini response just now, so I'm using a simple local reply instead. "
+        "Your Gemini API integration is already wired into the chatbot through `GOOGLE_API_KEY` and `GOOGLE_MODEL` in `.env`. "
+        "Once the Gemini request succeeds from your running app, the chatbot will answer naturally and dynamically like a normal conversation."
+    )
+
 
 def _rule_based_insights(name: str, size: int, ftype: str, desc: str) -> str:
     size_mb = size / (1024 * 1024)
     ext = ftype.lstrip(".").lower()
 
     type_info = {
-        "csv": ("📊 Tabular / spreadsheet data", "Python Pandas, Excel, DuckDB", "Load with `pd.read_csv()`, check dtypes, handle NaNs"),
-        "tsv": ("📊 Tab-separated tabular data", "Python Pandas, Excel", "Load with `pd.read_csv(sep='\\t')`, inspect columns"),
-        "json": ("🔗 Structured nested data", "Python json / Pandas, Node.js, MongoDB", "Parse with `json.load()`, flatten with `pd.json_normalize()`"),
-        "xlsx": ("📈 Excel workbook (multi-sheet)", "Python openpyxl / Pandas, Excel", "Use `pd.ExcelFile()` to inspect sheets, then `pd.read_excel()`"),
-        "xls": ("📈 Legacy Excel format", "Python xlrd / Pandas, LibreOffice", "Convert to xlsx first for modern tooling"),
-        "pdf": ("📄 Fixed-layout document", "pdfplumber, PyMuPDF, Adobe", "Extract text with `pdfplumber.open()`"),
-        "jpg": ("🖼️ JPEG image", "PIL/Pillow, OpenCV, ImageMagick", "Open with `Image.open()`, check resolution & mode"),
-        "png": ("🖼️ PNG image (lossless)", "PIL/Pillow, OpenCV", "Check transparency channel, resize with `img.resize()`"),
-        "nc": ("🌍 NetCDF geoscientific data", "xarray, netCDF4, CDO", "Load with `xr.open_dataset()`, check dimensions & variables"),
-        "geojson": ("🗺️ GeoJSON spatial data", "GeoPandas, QGIS, Leaflet.js", "Load with `geopandas.read_file()`, visualize with folium"),
+        "csv": ("Tabular or spreadsheet data", "Python Pandas, Excel, DuckDB", "Load with `pd.read_csv()`, inspect columns, handle missing values."),
+        "tsv": ("Tab-separated tabular data", "Python Pandas, Excel", "Load with `pd.read_csv(sep='\\t')` and inspect column types."),
+        "json": ("Structured nested data", "Python json, Pandas, Node.js", "Parse with `json.load()` and normalize nested fields if needed."),
+        "xlsx": ("Excel workbook", "Python openpyxl, Pandas, Excel", "Use `pd.ExcelFile()` to inspect sheets before loading."),
+        "xls": ("Legacy Excel workbook", "xlrd, Pandas, LibreOffice", "Convert to xlsx if you need modern tooling."),
+        "pdf": ("Fixed-layout document", "pdfplumber, PyMuPDF, Adobe tools", "Extract text first, then validate page structure."),
+        "jpg": ("JPEG image", "Pillow, OpenCV, ImageMagick", "Inspect resolution, orientation, and metadata."),
+        "png": ("PNG image", "Pillow, OpenCV", "Check transparency and dimensions before processing."),
+        "nc": ("NetCDF scientific data", "xarray, netCDF4, CDO", "Open with `xr.open_dataset()` and inspect dimensions."),
+        "geojson": ("GeoJSON spatial data", "GeoPandas, QGIS, Leaflet", "Load with `geopandas.read_file()` and validate geometry."),
     }
 
-    category, tools, steps = type_info.get(ext, (
-        f"📂 Binary/unknown file (`{ftype}`)",
-        "File-type specific tools",
-        "Inspect with `file` command, check magic bytes",
-    ))
-
-    return (
-        f"## {category}\n\n"
-        f"**File:** `{name}` | **Size:** {size_mb:.2f} MB\n\n"
-        f"**Recommended tools:** {tools}\n\n"
-        f"**Key steps:** {steps}\n\n"
-        f"{'**Description:** ' + desc + chr(10) + chr(10) if desc else ''}"
-        f"**Best practices:**\n"
-        f"- Verify file integrity after upload\n"
-        f"- Check for missing values before analysis\n"
-        f"- Keep a backup of the original file\n"
-        f"- Document data sources and transformations\n\n"
-        f"*Set `GOOGLE_API_KEY` in `.env` for deeper AI-powered analysis.*"
+    category, tools, steps = type_info.get(
+        ext,
+        (
+            f"Unknown or binary file (`{ftype}`)",
+            "File-type specific tools",
+            "Inspect file metadata and magic bytes before processing.",
+        ),
     )
 
-
-def _rule_based_chat(message: str) -> str:
-    m = message.lower()
-    if any(w in m for w in ("hello", "hi ", "hey", "start", "greet")):
-        return (
-            "👋 Hey there! I'm IAS Chatbot, your go-to assistant for all things DDAS.\n\n"
-            "I'm here to help you with:\n"
-            "• Uploading and analyzing your files\n"
-            "• Understanding how duplicate detection works\n"
-            "• Browsing and managing your dataset repository\n"
-            "• Finding duplicates and organizing your storage better\n\n"
-            "What would you like to know about DDAS? Feel free to ask me anything related to the system! 😊"
-        )
-    if any(w in m for w in ("duplicate", "copy", "same file", "hash", "collision")):
-        return (
-            "**Great question about duplicates!** 🔍\n\n"
-            "Here's how DDAS catches them: Every file you upload gets a unique digital fingerprint using SHA-256 hashing. Think of it like a DNA code for files.\n\n"
-            "When a new file arrives, we:\n"
-            "1. Generate its SHA-256 fingerprint\n"
-            "2. Check if we've seen this fingerprint before\n"
-            "3. If it matches something in our database → you get a duplicate alert 🚨\n"
-            "4. If it's unique → we register it as a new file ✅\n\n"
-            "The cool part? SHA-256 is virtually collision-proof. Two different files will almost never produce the same hash. It's cryptographically secure!"
-        )
-    if any(w in m for w in ("upload", "add file", "register", "import")):
-        return (
-            "**Here's how to upload a file:**\n\n"
-            "1. Head over to the **Upload** tab\n"
-            "2. Choose your file (local file or paste a URL—we handle both!)\n"
-            "3. Add some context if you want:\n"
-            "   • Your name or team\n"
-            "   • A description of what the file contains\n"
-            "   • Spatial domain or time period (optional)\n"
-            "4. Hit **Upload** and you're done!\n\n"
-            "Behind the scenes, we'll compute the SHA-256 hash, scan for duplicates, generate insights about your file, and register it all in seconds. Pretty neat, right? 🚀"
-        )
-    if any(w in m for w in ("scan", "monitor", "directory", "folder", "alert")):
-        return (
-            "**Scanning & Monitoring is where the magic happens!** ✨\n\n"
-            "You can:\n"
-            "• **Monitor a directory** – DDAS watches a folder and alerts you when new duplicates show up\n"
-            "• **Scan custom locations** – Point us to any folder and we'll analyze it\n"
-            "• **Get real-time alerts** – When duplicates are found, you'll see them immediately\n\n"
-            "It's like having a watchdog that never sleeps, catching duplicate files before they bog down your storage!"
-        )
-    if any(w in m for w in ("export", "download", "backup", "save")):
-        return (
-            "**Ready to export your data?** 📦\n\n"
-            "You can export your scan results as a nice ZIP file that includes:\n"
-            "• All the duplicate files you found\n"
-            "• Detailed metadata and analysis\n"
-            "• A summary report of what was scanned\n\n"
-            "Just head to the **Export** tab, select what you want, and download! We'll package everything neatly for you."
-        )
-    if any(w in m for w in ("feature", "what can", "help", "features", "capability")):
-        return (
-            "**Here's what DDAS can do for you:** 💪\n\n"
-            "📤 **Upload Files** – Local or remote, we handle both\n"
-            "🔍 **Duplicate Detection** – Using SHA-256 hashing, no false positives\n"
-            "📊 **Analytics Dashboard** – See insights about your datasets at a glance\n"
-            "📁 **Repository Browsing** – Explore all your registered files\n"
-            "⚠️ **Smart Alerts** – Get notified when duplicates appear\n"
-            "📦 **Export Tools** – Download scan results in organized ZIP files\n\n"
-            "Basically, we keep your data clean, organized, and duplicate-free! 🎯"
-        )
-    
-    # Default response - only DDAS topics
+    description_line = f"**Description:** {desc}\n\n" if desc else ""
     return (
-        "I appreciate the question! 😊 But I'm specifically trained to help with the Data Download Duplication Alert System (DDAS).\n\n"
-        "**Topics I'm expert on:**\n"
-        "• File uploading and format handling\n"
-        "• Duplicate detection & SHA-256 hashing\n"
-        "• Repository management and browsing\n"
-        "• Alert systems and notifications\n"
-        "• Data organization best practices\n\n"
-        "Got a DDAS question? I'm all ears! Otherwise, you might need a different assistant for that one. 😄"
+        f"## {category}\n\n"
+        f"**File:** `{name}`\n"
+        f"**Size:** {size_mb:.2f} MB\n"
+        f"**Recommended tools:** {tools}\n\n"
+        f"**Key steps:** {steps}\n\n"
+        f"{description_line}"
+        f"**Best practices:**\n"
+        f"- Verify integrity after upload.\n"
+        f"- Keep the original file untouched.\n"
+        f"- Record source and transformation details.\n\n"
+        f"*Set `GOOGLE_API_KEY` in `.env` for deeper AI-powered analysis.*"
     )

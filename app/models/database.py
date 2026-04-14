@@ -11,16 +11,15 @@ from typing import Any, Generator
 
 from config.settings import get_config
 
-Config = get_config()
 
-# Resolve path from DATABASE_URL (supports sqlite:///path)
-_db_url: str = Config.DATABASE_URL
-if _db_url.startswith("sqlite:///"):
-    DB_PATH = Path(_db_url[len("sqlite:///"):])
-else:
-    DB_PATH = Path(_db_url)
-
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+def _get_db_path() -> Path:
+    db_url = get_config().DATABASE_URL
+    if db_url.startswith("sqlite:///"):
+        path = Path(db_url[len("sqlite:///"):])
+    else:
+        path = Path(db_url)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 # ─────────────────────────── connection helper ────────────────────────────────
@@ -28,7 +27,7 @@ DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 @contextmanager
 def get_db() -> Generator[sqlite3.Connection, None, None]:
     """Thread-safe SQLite connection with WAL mode + foreign keys enabled."""
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=30)
+    conn = sqlite3.connect(str(_get_db_path()), check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -360,6 +359,7 @@ CREATE INDEX IF NOT EXISTS idx_scan_logs_hash    ON scan_logs(file_hash);
 
 def init_db() -> None:
     """Create all tables if they don't exist. Safe to call multiple times."""
+    db_path = _get_db_path()
     with get_db() as conn:
         conn.executescript(SCHEMA_SQL)
-    print(f"[DB] Initialized at {DB_PATH}")
+    print(f"[DB] Initialized at {db_path}")

@@ -21,7 +21,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from config.settings import get_config
 
-Config = get_config()
+
+def _config():
+    return get_config()
 
 # ─────────────────────────── JWT helpers ─────────────────────────────────────
 
@@ -31,10 +33,11 @@ def create_access_token(payload: dict[str, Any]) -> str:
     data = {
         **payload,
         "iat": now,
-        "exp": now + int(Config.JWT_ACCESS_TOKEN_EXPIRES.total_seconds()),
+        "exp": now + int(_config().JWT_ACCESS_TOKEN_EXPIRES.total_seconds()),
         "type": "access",
     }
-    return jwt.encode(data, Config.JWT_SECRET, algorithm=Config.JWT_ALGORITHM)
+    config = _config()
+    return jwt.encode(data, config.JWT_SECRET, algorithm=config.JWT_ALGORITHM)
 
 
 def create_refresh_token(user_id: str) -> str:
@@ -42,15 +45,17 @@ def create_refresh_token(user_id: str) -> str:
     data = {
         "sub": user_id,
         "iat": now,
-        "exp": now + int(Config.JWT_REFRESH_TOKEN_EXPIRES.total_seconds()),
+        "exp": now + int(_config().JWT_REFRESH_TOKEN_EXPIRES.total_seconds()),
         "type": "refresh",
     }
-    return jwt.encode(data, Config.JWT_SECRET, algorithm=Config.JWT_ALGORITHM)
+    config = _config()
+    return jwt.encode(data, config.JWT_SECRET, algorithm=config.JWT_ALGORITHM)
 
 
 def decode_token(token: str) -> dict[str, Any]:
     """Decode and validate a JWT. Raises jwt.InvalidTokenError on failure."""
-    return jwt.decode(token, Config.JWT_SECRET, algorithms=[Config.JWT_ALGORITHM])
+    config = _config()
+    return jwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
 
 
 # ─────────────────────────── Auth decorator ──────────────────────────────────
@@ -117,16 +122,17 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def hash_file(file_path: str | Path, algorithm: str | None = None) -> str:
     """Compute file hash (sha256 by default). Returns hex digest."""
-    algo = algorithm or Config.HASH_ALGORITHM
+    config = _config()
+    algo = algorithm or config.HASH_ALGORITHM
     h = hashlib.new(algo)
     with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(Config.HASH_CHUNK_SIZE), b""):
+        for chunk in iter(lambda: f.read(config.HASH_CHUNK_SIZE), b""):
             h.update(chunk)
     return h.hexdigest()
 
 
 def hash_bytes(data: bytes, algorithm: str | None = None) -> str:
-    algo = algorithm or Config.HASH_ALGORITHM
+    algo = algorithm or _config().HASH_ALGORITHM
     return hashlib.new(algo, data).hexdigest()
 
 
@@ -140,7 +146,7 @@ _DANGEROUS_PATTERNS = re.compile(
 
 def is_allowed_extension(filename: str) -> bool:
     ext = Path(filename).suffix.lstrip(".").lower()
-    return ext in Config.ALLOWED_EXTENSIONS
+    return ext in _config().ALLOWED_EXTENSIONS
 
 
 def sanitize_filename(filename: str) -> str:

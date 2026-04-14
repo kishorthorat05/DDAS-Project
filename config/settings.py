@@ -38,10 +38,14 @@ class Config:
     # ── Monitoring ────────────────────────────────────────────────────────────
     MONITORED_DIR: str = os.getenv("MONITORED_DIR", str(Path.home() / "Downloads"))
     SCAN_INTERVAL_SECONDS: int = int(os.getenv("SCAN_INTERVAL", "5"))
+    START_MONITOR_ON_BOOT: bool = os.getenv(
+        "START_MONITOR_ON_BOOT",
+        "true" if os.getenv("FLASK_ENV", "development") == "development" else "false",
+    ).lower() in {"1", "true", "yes", "on"}
 
     # ── AI (Google Generative AI) ────────────────────────────────────────────
     GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
-    GOOGLE_MODEL: str = os.getenv("GOOGLE_MODEL", "gemini-1.5-flash")
+    GOOGLE_MODEL: str = os.getenv("GOOGLE_MODEL", "gemini-2.5-flash")
     AI_MAX_TOKENS: int = 600
 
     # ── Rate Limiting ─────────────────────────────────────────────────────────
@@ -87,6 +91,7 @@ class TestingConfig(Config):
     TESTING: bool = True
     DATABASE_URL: str = "sqlite:///:memory:"
     UPLOAD_FOLDER: Path = Path(__file__).resolve().parent.parent / "data" / "test_uploads"
+    START_MONITOR_ON_BOOT: bool = False
 
 
 _ENV_MAP = {

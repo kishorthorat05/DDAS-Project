@@ -15,7 +15,9 @@ from app.services.dataset_service import (
 from app.utils.security import hash_file
 from config.settings import get_config
 
-Config = get_config()
+
+def _config():
+    return get_config()
 
 
 class _DDASEventHandler(FileSystemEventHandler):
@@ -124,7 +126,7 @@ def _process_file(file_path: str, triggered_by: str = "manual") -> dict:
 
 def manual_scan(directory: str | None = None) -> dict:
     """Scan all files in a directory. Returns summary."""
-    scan_dir = directory or Config.MONITORED_DIR
+    scan_dir = directory or _config().MONITORED_DIR
     results = {"scanned": 0, "duplicates": 0, "errors": 0, "directory": scan_dir}
 
     if not os.path.isdir(scan_dir):
@@ -156,7 +158,7 @@ def start_monitor(directory: str | None = None) -> bool:
         if _observer and _observer.is_alive():
             return False  # already running
 
-        watch_dir = directory or Config.MONITORED_DIR
+        watch_dir = directory or _config().MONITORED_DIR
         if not os.path.isdir(watch_dir):
             os.makedirs(watch_dir, exist_ok=True)
 
@@ -180,5 +182,5 @@ def stop_monitor() -> None:
 def monitor_status() -> dict:
     return {
         "running": bool(_observer and _observer.is_alive()),
-        "directory": Config.MONITORED_DIR,
+        "directory": _config().MONITORED_DIR,
     }

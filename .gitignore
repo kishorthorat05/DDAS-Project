@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+.env
+
+data/uploads/
+data/exports/
+
+test_output.txt

@@ -10,7 +10,12 @@ from pathlib import Path
 import requests
 from flask import Blueprint, g, jsonify, request, send_from_directory
 
-from app.services.ai_service import chat as ai_chat, get_file_insights, is_api_configured
+from app.services.ai_service import (
+    chat as ai_chat,
+    execute_chat_action,
+    get_file_insights,
+    is_api_configured,
+)
 from app.services.dataset_service import (
     AlertService, DatasetService, HistoryService, ScanLogService, DuplicateService
 )
@@ -30,7 +35,9 @@ from app.utils.security import (
 from app.models.database import get_db, row_to_dict
 from config.settings import get_config
 
-Config = get_config()
+
+def _config():
+    return get_config()
 
 # ─────────────────────────── Blueprints ──────────────────────────────────────
 
@@ -143,7 +150,7 @@ def me():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @data_bp.get("/datasets")
-@jwt_required
+@require_auth
 def get_datasets():
     limit  = min(int(request.args.get("limit", 100)), 500)
     offset = int(request.args.get("offset", 0))
@@ -151,7 +158,7 @@ def get_datasets():
 
 
 @data_bp.get("/datasets/search")
-@jwt_required
+@require_auth
 def search_datasets():
     q = sanitize_search_query(request.args.get("q", ""))
     if not q:
@@ -160,7 +167,7 @@ def search_datasets():
 
 
 @data_bp.get("/datasets/search/name")
-@jwt_required
+@require_auth
 def search_by_name():
     """Search files by name only."""
     file_name = sanitize_search_query(request.args.get("name", ""))
@@ -171,7 +178,7 @@ def search_by_name():
 
 
 @data_bp.get("/datasets/search/location")
-@jwt_required
+@require_auth
 def search_by_location():
     """Search files by location/path."""
     file_path = sanitize_search_query(request.args.get("path", ""))
@@ -182,7 +189,7 @@ def search_by_location():
 
 
 @data_bp.get("/datasets/filter/type")
-@jwt_required
+@require_auth
 def filter_by_type():
     """Filter files by type/extension."""
     file_type = sanitize_search_query(request.args.get("type", ""))
@@ -193,7 +200,7 @@ def filter_by_type():
 
 
 @data_bp.get("/datasets/filter/size")
-@jwt_required
+@require_auth
 def filter_by_size():
     """Filter files by size range (in bytes)."""
     try:
@@ -213,7 +220,7 @@ def filter_by_size():
 
 
 @data_bp.get("/datasets/filter/date")
-@jwt_required
+@require_auth
 def filter_by_date():
     """Filter files by creation date range (ISO format: YYYY-MM-DD)."""
     start_date = request.args.get("start")
@@ -227,7 +234,7 @@ def filter_by_date():
 
 
 @data_bp.post("/datasets/advanced-search")
-@jwt_required
+@require_auth
 def advanced_search():
     """Advanced search with multiple filters combined."""
     body = request.get_json(silent=True) or {}
@@ -261,13 +268,13 @@ def advanced_search():
 
 
 @data_bp.get("/datasets/stats")
-@jwt_required
+@require_auth
 def dataset_stats():
     return _ok(DatasetService.stats())
 
 
 @data_bp.get("/datasets/<dataset_id>")
-@jwt_required
+@require_auth
 def get_dataset(dataset_id: str):
     ds = DatasetService.get_by_id(dataset_id)
     if not ds:
@@ -277,7 +284,7 @@ def get_dataset(dataset_id: str):
 
 
 @data_bp.post("/check-duplicate")
-@jwt_required
+@require_auth
 @rate_limit(max_requests=100, window_seconds=60)
 def check_duplicate():
     body = request.get_json(silent=True) or {}
@@ -295,7 +302,7 @@ def check_duplicate():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @upload_bp.post("/upload/file")
-@jwt_required
+@require_auth
 @rate_limit(max_requests=20, window_seconds=3600)
 def upload_file():
     if "file" not in request.files:
@@ -315,12 +322,13 @@ def upload_file():
     spatial_domain = sanitize_str(request.form.get("spatial_domain", ""), 200)
 
     # Save to upload dir
-    Config.UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
-    dest = Config.UPLOAD_FOLDER / filename
+    upload_folder = _config().UPLOAD_FOLDER
+    upload_folder.mkdir(parents=True, exist_ok=True)
+    dest = upload_folder / filename
     # Avoid overwriting — append uuid if exists
     if dest.exists():
         stem = dest.stem
-        dest = Config.UPLOAD_FOLDER / f"{stem}_{uuid.uuid4().hex[:8]}{dest.suffix}"
+        dest = upload_folder / f"{stem}_{uuid.uuid4().hex[:8]}{dest.suffix}"
 
     file.save(str(dest))
     file_hash = hash_file(dest)
@@ -370,7 +378,7 @@ def upload_file():
 
 
 @upload_bp.post("/upload/url")
-@jwt_required
+@require_auth
 @rate_limit(max_requests=10, window_seconds=3600)
 def upload_from_url():
     body = request.get_json(silent=True) or {}
@@ -397,10 +405,11 @@ def upload_from_url():
     if not is_allowed_extension(filename):
         filename = filename + ".bin"
 
-    Config.UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
-    dest = Config.UPLOAD_FOLDER / filename
+    upload_folder = _config().UPLOAD_FOLDER
+    upload_folder.mkdir(parents=True, exist_ok=True)
+    dest = upload_folder / filename
     if dest.exists():
-        dest = Config.UPLOAD_FOLDER / f"{dest.stem}_{uuid.uuid4().hex[:8]}{dest.suffix}"
+        dest = upload_folder / f"{dest.stem}_{uuid.uuid4().hex[:8]}{dest.suffix}"
 
     with open(dest, "wb") as fh:
         for chunk in resp.iter_content(chunk_size=65536):
@@ -431,7 +440,7 @@ def upload_from_url():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @alert_bp.get("/alerts")
-@jwt_required
+@require_auth
 def get_alerts():
     unread_only = request.args.get("unread") == "1"
     limit = min(int(request.args.get("limit", 100)), 500)
@@ -441,14 +450,14 @@ def get_alerts():
 
 
 @alert_bp.patch("/alerts/<alert_id>/read")
-@jwt_required
+@require_auth
 def mark_alert_read(alert_id: str):
     AlertService.mark_read(alert_id)
     return _ok(message="Alert marked as read.")
 
 
 @alert_bp.post("/alerts/read-all")
-@jwt_required
+@require_auth
 def mark_all_alerts_read():
     AlertService.mark_all_read()
     return _ok(message="All alerts marked as read.")
@@ -459,7 +468,7 @@ def mark_all_alerts_read():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @monitor_bp.post("/monitor/scan")
-@jwt_required
+@require_auth
 @rate_limit(max_requests=5, window_seconds=60)
 def trigger_scan():
     """Scan the monitored directory or a specified directory for duplicates."""
@@ -518,7 +527,7 @@ def trigger_scan():
 
 
 @monitor_bp.get("/monitor/status")
-@jwt_required
+@require_auth
 def get_monitor_status():
     return _ok(monitor_status())
 
@@ -538,14 +547,14 @@ def stop_monitor_route():
 
 
 @monitor_bp.get("/scan-logs")
-@jwt_required
+@require_auth
 def get_scan_logs():
     limit = min(int(request.args.get("limit", 100)), 500)
     return _ok(ScanLogService.get_recent(limit))
 
 
 @monitor_bp.get("/history")
-@jwt_required
+@require_auth
 def get_history():
     limit = min(int(request.args.get("limit", 100)), 500)
     return _ok(HistoryService.get_recent(limit))
@@ -561,7 +570,7 @@ _MAX_HISTORY = 20
 
 
 @ai_bp.post("/chat")
-@jwt_required
+@require_auth
 @rate_limit(max_requests=60, window_seconds=3600)
 def chat_endpoint():
     body = request.get_json(silent=True) or {}
@@ -573,7 +582,14 @@ def chat_endpoint():
         return _err("message is required.")
 
     history = _chat_sessions.get(session_id, [])
-    reply = ai_chat(message, history, context)
+    current_user = g.get("current_user", {}) or {}
+    reply = execute_chat_action(
+        message,
+        user_role=str(current_user.get("role", "")),
+        username=str(current_user.get("username", "")),
+    )
+    if reply is None:
+        reply = ai_chat(message, history, context)
 
     history.append({"role": "user", "content": message})
     history.append({"role": "assistant", "content": reply})
@@ -583,7 +599,7 @@ def chat_endpoint():
 
 
 @ai_bp.post("/chat/clear")
-@jwt_required
+@require_auth
 def clear_chat():
     body = request.get_json(silent=True) or {}
     session_id = sanitize_str(body.get("session_id", "default"), 64)
@@ -606,7 +622,7 @@ def ai_status():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @analytics_bp.get("/dashboard")
-@jwt_required
+@require_auth
 def get_dashboard():
     """Get comprehensive dashboard statistics."""
     stats = get_dashboard_stats()
@@ -614,7 +630,7 @@ def get_dashboard():
 
 
 @analytics_bp.get("/timeline")
-@jwt_required
+@require_auth
 def get_timeline():
     """Get timeline data for charts (daily uploads, duplicates, storage)."""
     days = min(int(request.args.get("days", 30)), 365)
@@ -623,7 +639,7 @@ def get_timeline():
 
 
 @analytics_bp.get("/file-types")
-@jwt_required
+@require_auth
 def get_file_types():
     """Get distribution of file types in repository."""
     distribution = get_file_type_distribution()
@@ -631,7 +647,7 @@ def get_file_types():
 
 
 @analytics_bp.get("/user-activity")
-@jwt_required
+@require_auth
 @require_role("admin", "operator")
 def get_user_activity_endpoint():
     """Get user activity metrics."""
@@ -641,7 +657,7 @@ def get_user_activity_endpoint():
 
 
 @analytics_bp.get("/top-duplicates")
-@jwt_required
+@require_auth
 def get_top_duplicates_endpoint():
     """Get the most frequently duplicated files."""
     limit = min(int(request.args.get("limit", 20)), 100)
@@ -650,7 +666,7 @@ def get_top_duplicates_endpoint():
 
 
 @analytics_bp.get("/system-health")
-@jwt_required
+@require_auth
 @require_role("admin")
 def get_system_health_endpoint():
     """Get system health metrics."""
@@ -663,7 +679,7 @@ def get_system_health_endpoint():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @export_bp.post("/scan-results")
-@jwt_required
+@require_auth
 @rate_limit(max_requests=10, window_seconds=3600)
 def export_scan_results():
     """
@@ -688,7 +704,7 @@ def export_scan_results():
 
 
 @export_bp.post("/datasets")
-@jwt_required
+@require_auth
 @rate_limit(max_requests=5, window_seconds=3600)
 def export_datasets():
     """
@@ -711,7 +727,7 @@ def export_datasets():
 
 
 @export_bp.post("/cleanup")
-@jwt_required
+@require_auth
 @require_role("admin")
 def cleanup_exports():
     """Remove old export files (older than 7 days)."""
@@ -724,10 +740,10 @@ def cleanup_exports():
 
 
 @export_bp.get("/list")
-@jwt_required
+@require_auth
 def list_exports():
     """List available export files."""
-    export_dir = Config.UPLOAD_FOLDER / "exports"
+    export_dir = _config().UPLOAD_FOLDER / "exports"
     if not export_dir.exists():
         return _ok([])
     
@@ -743,14 +759,14 @@ def list_exports():
 
 
 @export_bp.get("/download")
-@jwt_required
+@require_auth
 def download_export():
     """Download an export file."""
     filename = sanitize_filename(request.args.get("file", ""))
     if not filename:
         return _err("file parameter required", 400)
     
-    export_dir = Config.UPLOAD_FOLDER / "exports"
+    export_dir = _config().UPLOAD_FOLDER / "exports"
     file_path = export_dir / filename
     
     # Security: ensure file is in export directory
@@ -766,7 +782,7 @@ def download_export():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @monitor_bp.get("/scan-progress")
-@jwt_required
+@require_auth
 def get_scan_progress():
     """
     Get current scan progress (for real-time updates).
@@ -785,7 +801,7 @@ def get_scan_progress():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @duplicates_bp.get("/all")
-@jwt_required
+@require_auth
 def get_all_duplicates():
     """
     Get all duplicate groups in the system.
@@ -800,7 +816,7 @@ def get_all_duplicates():
 
 
 @duplicates_bp.get("/by-hash/<file_hash>")
-@jwt_required
+@require_auth
 def get_duplicates_by_hash(file_hash: str):
     """
     Get all files with the same hash (duplicates).
@@ -816,7 +832,7 @@ def get_duplicates_by_hash(file_hash: str):
 
 
 @duplicates_bp.get("/for-file/<dataset_id>")
-@jwt_required
+@require_auth
 def get_duplicates_for_file(dataset_id: str):
     """
     Get all duplicates for a specific file by dataset ID.
@@ -833,7 +849,7 @@ def get_duplicates_for_file(dataset_id: str):
 
 
 @duplicates_bp.get("/by-name")
-@jwt_required
+@require_auth
 def find_duplicates_by_name():
     """
     Search for files with the same name (potential duplicates).
@@ -852,7 +868,7 @@ def find_duplicates_by_name():
 
 
 @duplicates_bp.get("/statistics")
-@jwt_required
+@require_auth
 def get_duplicate_statistics():
     """
     Get comprehensive duplicate statistics for the system.
@@ -863,7 +879,7 @@ def get_duplicate_statistics():
 
 
 @duplicates_bp.post("/mark-for-deduplication")
-@jwt_required
+@require_auth
 def mark_for_deduplication():
     """
     Mark a duplicate group for deduplication.
@@ -906,7 +922,7 @@ def mark_for_deduplication():
 
 
 @duplicates_bp.post("/scan-directory")
-@jwt_required
+@require_auth
 def scan_directory_for_duplicates():
     """
     Scan a directory on the file system for duplicates.
@@ -944,7 +960,7 @@ def scan_directory_for_duplicates():
 
 
 @duplicates_bp.post("/search-by-filename")
-@jwt_required
+@require_auth
 def search_duplicates_by_filename():
     """
     Search for all instances of a filename across system paths.

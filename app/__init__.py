@@ -16,10 +16,8 @@ from app.services.ai_service import is_api_configured
 from app.services.monitor_service import start_monitor
 from config.settings import get_config
 
-Config = get_config()
-
-
-def create_app() -> Flask:
+def create_app(config_object=None) -> Flask:
+    config_cls = config_object or get_config()
     app = Flask(
         __name__,
         static_folder=str(Path(__file__).parent.parent / "static"),
@@ -27,9 +25,11 @@ def create_app() -> Flask:
     )
 
     # ── Config ────────────────────────────────────────────────────────────────
-    app.config.from_object(Config)
-    app.config["MAX_CONTENT_LENGTH"] = Config.MAX_CONTENT_LENGTH
-    Config.init_dirs()
+    app.config.from_object(config_cls)
+    app.config["MAX_CONTENT_LENGTH"] = config_cls.MAX_CONTENT_LENGTH
+    config_cls.init_dirs()
+    if hasattr(config_cls, "validate"):
+        config_cls.validate()
 
     # ── DB ────────────────────────────────────────────────────────────────────
     init_db()
@@ -55,7 +55,8 @@ def create_app() -> Flask:
     @app.after_request
     def add_cors(response):
         origin = request_origin()
-        if origin in Config.CORS_ORIGINS or "*" in Config.CORS_ORIGINS:
+        allowed_origins = app.config.get("CORS_ORIGINS", [])
+        if origin in allowed_origins or "*" in allowed_origins:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
@@ -120,12 +121,13 @@ def create_app() -> Flask:
         return jsonify({"error": "Internal server error", "code": "SERVER_ERROR"}), 500
 
     # ── Start background monitor ──────────────────────────────────────────────
-    def _start_monitor_delayed():
-        time.sleep(2)
-        start_monitor()
+    if app.config.get("START_MONITOR_ON_BOOT") and not app.config.get("TESTING"):
+        def _start_monitor_delayed():
+            time.sleep(2)
+            start_monitor()
 
-    t = threading.Thread(target=_start_monitor_delayed, daemon=True)
-    t.start()
+        t = threading.Thread(target=_start_monitor_delayed, daemon=True)
+        t.start()
 
     return app
 

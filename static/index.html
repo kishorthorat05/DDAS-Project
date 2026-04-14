@@ -1508,9 +1508,24 @@ async function sendChat() {
   inp.value = ''; autoResize(inp);
   appendChatBubble(msg, 'user');
   const typingEl = appendTyping();
-  const r = await api('/api/ai/chat', { method: 'POST', json: { message: msg, session_id: chatSessionId } });
+  const r = await api('/api/ai/chat', {
+    method: 'POST',
+    json: {
+      message: msg,
+      session_id: chatSessionId,
+      context: getChatContext(),
+    }
+  });
   typingEl.remove();
   appendChatBubble(r.data?.reply || r.error || 'Sorry, something went wrong.', 'assistant');
+}
+
+function getChatContext() {
+  const activePage = document.querySelector('.page.active');
+  const pageId = activePage?.id || 'unknown';
+  const pageTitle = activePage?.querySelector('.page-title')?.textContent?.trim() || '';
+  const aiBadge = document.getElementById('ai-status-badge')?.textContent?.trim() || '';
+  return `active_page=${pageId}; title=${pageTitle}; ai_status=${aiBadge}`;
 }
 
 function chatKeydown(e) {
