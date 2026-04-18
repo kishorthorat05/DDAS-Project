@@ -440,6 +440,27 @@ class DuplicateService:
         files = rows_to_list(rows)
         if not files:
             return None
+            
+        # Ensure DB timestamps in seconds are converted to milliseconds for the frontend
+        for f in files:
+            created = f.get("created_at")
+            if isinstance(created, (int, float)) and created < 10000000000:
+                f["created_at"] = int(created * 1000)
+            elif isinstance(created, str) and created.isdigit() and int(created) < 10000000000:
+                f["created_at"] = int(created) * 1000
+            elif isinstance(created, str):
+                try:
+                    # Convert SQLite 'YYYY-MM-DD HH:MM:SS' or ISO string to ms timestamp
+                    clean_str = created.replace('Z', '').split('.')[0]
+                    if 'T' in clean_str:
+                        dt = datetime.fromisoformat(clean_str)
+                    else:
+                        dt = datetime.strptime(clean_str, "%Y-%m-%d %H:%M:%S")
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    f["created_at"] = int(dt.timestamp() * 1000)
+                except Exception:
+                    pass
         
         # Calculate storage saved
         if len(files) > 1:
@@ -659,6 +680,11 @@ class DuplicateService:
                     file_size = filepath.stat().st_size
                     result["total_size_bytes"] += file_size
                     
+                    try:
+                        c_time = filepath.stat().st_birthtime
+                    except AttributeError:
+                        c_time = filepath.stat().st_ctime if os.name == 'nt' else filepath.stat().st_mtime
+
                     # Track file by hash
                     if file_hash not in hash_map:
                         hash_map[file_hash] = []
@@ -668,7 +694,7 @@ class DuplicateService:
                         "file_location": str(filepath),
                         "file_size": file_size,
                         "file_type": filepath.suffix.lower(),
-                        "created_at": filepath.stat().st_ctime,  # Creation time
+                        "created_at": int(c_time * 1000),  # Millisecond timestamp for JS
                     })
                     
                     result["scanned_files"] += 1
@@ -783,7 +809,12 @@ class DuplicateService:
                         
                         file_size = filepath.stat().st_size
                         file_type = filepath.suffix.lower() if filepath.suffix else ".unknown"
-                        created_time = filepath.stat().st_ctime
+                        
+                        try:
+                            c_time = filepath.stat().st_birthtime
+                        except AttributeError:
+                            c_time = filepath.stat().st_ctime if os.name == 'nt' else filepath.stat().st_mtime
+                        created_time = int(c_time * 1000)  # Millisecond timestamp for JS
                         
                         result["total_size_bytes"] += file_size
                         
@@ -827,6 +858,7 @@ class DuplicateService:
                     "file_name": files[0]["file_name"],
                     "file_type": files[0]["file_type"],
                     "files": files,
+                    "all_files": files,
                     "total_storage_used": total_size,
                     "storage_wasted": total_size - files[0]["file_size"],
                 }
@@ -836,4 +868,3 @@ class DuplicateService:
         result["duplicate_groups"].sort(key=lambda x: x["storage_wasted"], reverse=True)
         
         return result
-
