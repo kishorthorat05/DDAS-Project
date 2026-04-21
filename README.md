@@ -1,11 +1,45 @@
-# DDAS v3.0 — Data Download Duplication Alert System
+# DDAS v4.0 — Data Download Duplication Alert System
 
-Production-ready Flask application with SHA-256 duplicate detection, JWT auth,
-Anthropic Claude AI integration, and a modern dark-theme SPA frontend.
+Enterprise-grade, production-ready Flask application for intelligent file duplicate detection. Featuring SHA-256 and fuzzy similarity matching, Google Gemini AI integration, real-time directory monitoring, advanced analytics, and a modern single-page application (SPA) frontend.
 
 ---
 
-## Quick Start
+## 🌟 Key Features
+
+- **Advanced Duplicate Detection**: Industry-standard SHA-256 hashing combined with Levenshtein distance and Jaccard similarity for near-duplicate detection.
+- **Smart AI Chatbot**: Integrated with Google Gemini (1.5 Flash) for dynamic, context-aware assistance, file insights, and system recommendations.
+- **Real-Time Directory Scanning**: Watchdog-powered continuous monitoring and manual recursive directory scanning with real-time feedback.
+- **Performance Analytics**: Comprehensive dashboard showing metrics like total duplicates, storage/bandwidth savings, file type distribution, and 30-day upload trends.
+- **Enterprise Security**: JWT-based authentication, Role-Based Access Control (RBAC) with 5 tiers (Admin, Owner, Operator, Viewer, Auditor), SSRF prevention, and rate limiting.
+- **Export & Backup**: Automated ZIP exports of scan results, filtered datasets, and metadata with auto-cleanup policies.
+- **Version Control & Collaboration**: Track dataset versions, rollback capabilities, change tracking, and secure team sharing with expiring links.
+- **Bandwidth Optimization**: Track data reuse and compression (Gzip/Bzip2) metrics directly from the dashboard.
+- **Multi-Cloud Support**: Infrastructure to support integrations with AWS S3, Google Cloud Storage, Azure Blob, and SFTP.
+
+---
+
+## 🛠️ Technology Stack
+
+### Backend
+- **Framework**: Python 3.11+, Flask, Werkzeug
+- **Database**: SQLite (WAL mode optimized for concurrency) / Ready for PostgreSQL
+- **AI Integration**: Google Generative AI (`google-generativeai` SDK)
+- **File Monitoring**: Watchdog (cross-platform file system events)
+- **Hashing & Algorithms**: `hashlib` (SHA-256), custom Levenshtein/Jaccard similarity logic
+
+### Frontend
+- **Core**: HTML5, CSS3, Vanilla JavaScript (No heavy frameworks, highly optimized SPA)
+- **Visualizations**: Chart.js for real-time analytics and timeline charts
+- **UI/UX**: Custom responsive dark-theme design with dynamic state loading
+
+### Security
+- **Authentication**: PyJWT (JSON Web Tokens with Bearer strategy)
+- **Password Hashing**: Bcrypt (`pbkdf2:sha256:600000` rounds)
+- **Protections**: XSS escaping, SQL-injection safe parameterization, SSRF URL validation, Path Traversal blocks
+
+---
+
+## 🚀 Quick Start
 
 ```bash
 # 1. Clone / extract the project
@@ -13,18 +47,20 @@ cd ddas
 
 # 2. Create a virtual environment
 python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
+source .venv/bin/activate       # Mac/Linux
+.\.venv\Scripts\activate        # Windows
 
 # 3. Install dependencies
 pip install -r requirements.txt
 
 # 4. Configure environment
 cp .env.example .env
-# Edit .env — set GOOGLR_API_KEY, SECRET_KEY, JWT_SECRET, MONITORED_DIR
+# Edit .env — set GOOGLE_API_KEY, SECRET_KEY, JWT_SECRET, MONITORED_DIR
 
-# 5. Run
+# 5. Run the Application
 python run.py
-# → Open http://localhost:5000
+
+# → Open http://127.0.0.1:5000 in your browser
 ```
 
 ---
