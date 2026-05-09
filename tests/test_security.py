@@ -45,10 +45,10 @@ class TestFilenameValidation:
         assert is_allowed_extension("report.xlsx")
         assert is_allowed_extension("image.png")
 
-    def test_blocked_extension(self):
-        assert not is_allowed_extension("script.exe")
-        assert not is_allowed_extension("virus.bat")
-        assert not is_allowed_extension("malware.sh")
+    def test_all_sanitized_filenames_are_allowed(self):
+        assert is_allowed_extension("script.exe")
+        assert is_allowed_extension("archive.unknown")
+        assert is_allowed_extension("file_without_extension")
 
     def test_sanitize_filename(self):
         assert "/" not in sanitize_filename("../../../etc/passwd")

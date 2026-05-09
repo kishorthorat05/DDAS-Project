@@ -95,13 +95,33 @@ def require_auth(f: Callable) -> Callable:
 
 
 def require_role(*roles: str) -> Callable:
-    """Restrict endpoint to specific roles (admin, operator, viewer)."""
+    """Restrict endpoint to specific authenticated roles."""
     def decorator(f: Callable) -> Callable:
         @wraps(f)
         @require_auth
         def wrapper(*args, **kwargs):
-            user_role = g.current_user.get("role", "viewer")
+            user_role = g.current_user.get("role", "registered")
             if user_role not in roles:
+                return jsonify({"error": "Insufficient permissions", "code": "FORBIDDEN"}), 403
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def require_permission(permission: str) -> Callable:
+    """Restrict endpoint to users whose profile grants a named permission."""
+    def decorator(f: Callable) -> Callable:
+        @wraps(f)
+        @require_auth
+        def wrapper(*args, **kwargs):
+            user_id = g.current_user.get("sub")
+            user_role = g.current_user.get("role", "registered")
+            if user_role == "admin":
+                return f(*args, **kwargs)
+
+            from app.services.profile_service import ProfileService
+
+            if not user_id or not ProfileService.has_permission(user_id, permission):
                 return jsonify({"error": "Insufficient permissions", "code": "FORBIDDEN"}), 403
             return f(*args, **kwargs)
         return wrapper
@@ -145,8 +165,7 @@ _DANGEROUS_PATTERNS = re.compile(
 
 
 def is_allowed_extension(filename: str) -> bool:
-    ext = Path(filename).suffix.lstrip(".").lower()
-    return ext in _config().ALLOWED_EXTENSIONS
+    return bool(sanitize_filename(filename))
 
 
 def sanitize_filename(filename: str) -> str:

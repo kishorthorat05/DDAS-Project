@@ -11,20 +11,14 @@ from app.models.database import get_db, row_to_dict, rows_to_list
 DEFAULT_ROLES = {
     "admin": [
         "upload", "download", "delete", "edit", "share", "manage_team",
-        "manage_roles", "manage_org", "view_analytics", "manage_integrations"
+        "manage_roles", "manage_org", "view_analytics", "manage_integrations",
+        "run_scanner", "start_monitor", "export_data", "ai_chat"
     ],
-    "owner": [
-        "upload", "download", "delete", "edit", "share", "manage_team",
+    "registered": [
+        "upload", "download", "view_analytics", "export_data", "ai_chat"
+    ],
+    "guest": [
         "view_analytics"
-    ],
-    "operator": [
-        "upload", "download", "edit", "share", "view_analytics"
-    ],
-    "viewer": [
-        "download", "view_analytics"
-    ],
-    "auditor": [
-        "download", "view_analytics", "audit_logs"
     ]
 }
 
@@ -63,7 +57,7 @@ def get_user_permissions(user_id: str) -> Set[str]:
                 return set(json.loads(role["permissions"]))
         
         # Backward compat
-        role_name = user.get("role", "viewer")
+        role_name = user.get("role", "registered")
         return set(DEFAULT_ROLES.get(role_name, []))
 
 

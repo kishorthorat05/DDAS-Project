@@ -9,7 +9,7 @@ from pathlib import Path
 from flask import Flask, jsonify, send_from_directory
 
 from app.api.routes import (
-    ai_bp, alert_bp, auth_bp, data_bp, monitor_bp, upload_bp, analytics_bp, export_bp, duplicates_bp
+    ai_bp, alert_bp, auth_bp, data_bp, monitor_bp, upload_bp, analytics_bp, export_bp, duplicates_bp, profile_bp
 )
 from app.models.database import init_db
 from app.services.ai_service import is_api_configured
@@ -46,7 +46,7 @@ def create_app(config_object=None) -> Flask:
             "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
-            "img-src 'self' data:; "
+            "img-src 'self' data: https:; "
             "connect-src 'self' https://generativelanguage.googleapis.com;"
         )
         return response
@@ -70,7 +70,7 @@ def create_app(config_object=None) -> Flask:
             return jsonify({}), 204
 
     # ── Blueprints ────────────────────────────────────────────────────────────
-    for bp in (auth_bp, data_bp, upload_bp, alert_bp, monitor_bp, ai_bp, analytics_bp, export_bp, duplicates_bp):
+    for bp in (auth_bp, data_bp, upload_bp, alert_bp, monitor_bp, ai_bp, analytics_bp, export_bp, duplicates_bp, profile_bp):
         app.register_blueprint(bp)
 
     # ── Health ────────────────────────────────────────────────────────────────

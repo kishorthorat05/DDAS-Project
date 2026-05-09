@@ -65,6 +65,7 @@ class Config:
     @classmethod
     def init_dirs(cls) -> None:
         cls.UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+        (cls.UPLOAD_FOLDER.parent / "profile_avatars").mkdir(parents=True, exist_ok=True)
         (BASE_DIR / "data").mkdir(parents=True, exist_ok=True)
 
 

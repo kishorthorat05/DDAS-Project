@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS organizations (
 -- Role definitions & permissions
 CREATE TABLE IF NOT EXISTS roles (
     id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-    name        TEXT NOT NULL UNIQUE,  -- admin, owner, operator, viewer, auditor
+    name        TEXT NOT NULL UNIQUE,  -- active app roles: admin, registered, guest
     permissions TEXT NOT NULL,  -- JSON array: ["upload", "download", "delete", "share", "manage_team", etc.]
     is_system   INTEGER NOT NULL DEFAULT 0
 );
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash   TEXT NOT NULL,
     organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
     role_id         TEXT REFERENCES roles(id) ON DELETE SET NULL,
-    role            TEXT DEFAULT 'viewer',   -- backward compat: admin | operator | viewer
+    role            TEXT DEFAULT 'registered',   -- active roles: admin | registered | guest
     is_active       INTEGER NOT NULL DEFAULT 1,
     last_login      TEXT,
     login_count     INTEGER DEFAULT 0,
@@ -333,6 +333,43 @@ CREATE INDEX IF NOT EXISTS idx_alerts_type    ON alerts(alert_type);
 CREATE INDEX IF NOT EXISTS idx_alerts_user    ON alerts(triggered_by_user_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at DESC);
 
+-- User Profiles (role-specific profile data)
+CREATE TABLE IF NOT EXISTS user_profiles (
+    id                  TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    user_id             TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    full_name           TEXT,
+    bio                 TEXT,
+    avatar_url          TEXT,
+    phone_number        TEXT,
+    department          TEXT,
+    title               TEXT,
+    timezone            TEXT DEFAULT 'UTC',
+    language            TEXT DEFAULT 'en',
+    theme               TEXT DEFAULT 'light',  -- light | dark
+    notifications_enabled INTEGER DEFAULT 1,
+    email_notifications INTEGER DEFAULT 1,
+    -- Role-specific permissions & preferences
+    permissions         TEXT,  -- JSON: additional role-specific permissions
+    preferences         TEXT,  -- JSON: user preferences (default limit, sort order, etc.)
+    -- Profile metadata
+    is_verified         INTEGER DEFAULT 0,
+    verification_token  TEXT,
+    profile_status      TEXT DEFAULT 'active',  -- active | inactive | suspended
+    -- Statistics
+    total_uploads       INTEGER DEFAULT 0,
+    total_downloads     INTEGER DEFAULT 0,
+    datasets_created    INTEGER DEFAULT 0,
+    duplicates_found    INTEGER DEFAULT 0,
+    -- Dates
+    created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    last_active         TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_profile_user  ON user_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_profile_status ON user_profiles(profile_status);
+CREATE INDEX IF NOT EXISTS idx_user_profile_verified ON user_profiles(is_verified);
+
 -- Scan logs (enhanced)
 CREATE TABLE IF NOT EXISTS scan_logs (
     id                  TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
@@ -363,3 +400,131 @@ def init_db() -> None:
     with get_db() as conn:
         conn.executescript(SCHEMA_SQL)
     print(f"[DB] Initialized at {db_path}")
+
+
+# ─────────────────────────── User Profile Helpers ──────────────────────────
+
+def create_user_profile(user_id: str, role: str = "registered", full_name: str = "", email: str = "") -> dict:
+    """Create a default user profile when a new user registers."""
+    import json
+    
+    # Define default permissions based on role
+    role_permissions = {
+        "guest": ["view_dashboard", "view_analytics"],
+        "registered": ["view_dashboard", "view_analytics", "view_datasets", "download", "upload", "create_alerts", "ai_chat", "export_data"],
+        "admin": ["*"]  # All permissions
+    }
+    
+    # Define default preferences
+    role_preferences = {
+        "guest": {"limit": 10, "sort_order": "desc"},
+        "registered": {"limit": 100, "sort_order": "desc", "auto_refresh": True, "page_size": 20},
+        "admin": {"limit": 9999, "sort_order": "desc", "auto_refresh": True, "page_size": 100, "alerts": True, "analytics": True}
+    }
+    
+    permissions = role_permissions.get(role, role_permissions["registered"])
+    preferences = role_preferences.get(role, role_preferences["registered"])
+    
+    profile_data = {
+        "user_id": user_id,
+        "full_name": full_name or "User",
+        "permissions": json.dumps(permissions),
+        "preferences": json.dumps(preferences),
+        "timezone": "UTC",
+        "language": "en",
+        "theme": "light",
+        "notifications_enabled": 1,
+        "email_notifications": 1 if email else 0,
+        "is_verified": 1 if email else 0,
+        "profile_status": "active"
+    }
+    
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO user_profiles 
+               (user_id, full_name, permissions, preferences, timezone, language, theme, 
+                notifications_enabled, email_notifications, is_verified, profile_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (profile_data["user_id"], profile_data["full_name"], profile_data["permissions"],
+             profile_data["preferences"], profile_data["timezone"], profile_data["language"],
+             profile_data["theme"], profile_data["notifications_enabled"], 
+             profile_data["email_notifications"], profile_data["is_verified"], 
+             profile_data["profile_status"])
+        )
+    
+    return profile_data
+
+
+def get_user_profile(user_id: str) -> dict | None:
+    """Get a user's profile by user ID."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    return row_to_dict(row)
+
+
+def update_user_profile(user_id: str, **updates) -> dict | None:
+    """Update user profile fields."""
+    if not updates:
+        return get_user_profile(user_id)
+    
+    # Build dynamic UPDATE query
+    set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
+    values = list(updates.values()) + [user_id]
+    
+    with get_db() as conn:
+        conn.execute(
+            f"UPDATE user_profiles SET {set_clause}, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id = ?",
+            values
+        )
+    
+    return get_user_profile(user_id)
+
+
+def get_user_with_profile(user_id: str) -> dict | None:
+    """Get user data merged with their profile."""
+    with get_db() as conn:
+        user = row_to_dict(conn.execute(
+            "SELECT id, username, email, role, created_at, is_active, last_login, login_count FROM users WHERE id = ?", (user_id,)
+        ).fetchone())
+        
+        if not user:
+            return None
+        
+        profile = row_to_dict(conn.execute(
+            "SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)
+        ).fetchone())
+    
+    # Merge user and profile data
+    result = {**user, "profile": profile or {}}
+    return result
+
+
+def get_all_user_profiles(limit: int = 100, offset: int = 0) -> list[dict]:
+    """Get all user profiles paginated."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT u.id, u.username, u.email, u.role, p.* 
+               FROM user_profiles p
+               JOIN users u ON p.user_id = u.id
+               ORDER BY p.created_at DESC
+               LIMIT ? OFFSET ?""",
+            (limit, offset)
+        ).fetchall()
+    return rows_to_list(rows)
+
+
+def get_profiles_by_role(role: str, limit: int = 100) -> list[dict]:
+    """Get all user profiles for a specific role."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT u.id, u.username, u.email, u.role, p.* 
+               FROM user_profiles p
+               JOIN users u ON p.user_id = u.id
+               WHERE u.role = ?
+               ORDER BY p.created_at DESC
+               LIMIT ?""",
+            (role, limit)
+        ).fetchall()
+    return rows_to_list(rows)

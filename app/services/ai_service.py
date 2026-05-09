@@ -255,8 +255,8 @@ def execute_chat_action(
             )
 
         if kind == "start_monitor":
-            if role not in {"admin", "operator"}:
-                return "I can see the request, but starting the monitor is only allowed for admin or operator users."
+            if role != "admin":
+                return "I can see the request, but starting the monitor is only allowed for administrator users."
             started = start_monitor(action.get("directory"))
             if started:
                 target_dir = action.get("directory") or Config.MONITORED_DIR

@@ -3,6 +3,8 @@ API blueprints for DDAS.
 All endpoints return JSON. Auth via JWT Bearer token.
 """
 import os
+import random
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -25,14 +27,16 @@ from app.services.analytics_service import (
     get_dashboard_stats, get_timeline_data, get_file_type_distribution,
     get_user_activity, get_top_duplicates, get_system_health
 )
+from app.services.profile_service import ProfileService
 from app.utils.security import (
     hash_file, hash_bytes,
     is_allowed_extension, is_safe_url,
     jwt_required, rate_limit, require_auth, require_role,
+    require_permission,
     sanitize_filename, sanitize_search_query, sanitize_str,
     hash_password, verify_password, create_access_token, create_refresh_token,
 )
-from app.models.database import get_db, row_to_dict
+from app.models.database import get_db, row_to_dict, create_user_profile, get_user_with_profile, get_user_profile
 from config.settings import get_config
 
 
@@ -50,6 +54,10 @@ ai_bp     = Blueprint("ai",      __name__, url_prefix="/api/ai")
 analytics_bp = Blueprint("analytics", __name__, url_prefix="/api/analytics")
 export_bp = Blueprint("export",  __name__, url_prefix="/api/export")
 duplicates_bp = Blueprint("duplicates", __name__, url_prefix="/api/duplicates")
+profile_bp = Blueprint("profile", __name__, url_prefix="/api/profile")
+
+_OTP_TTL_SECONDS = 300
+_otp_store: dict[tuple[str, str], dict] = {}
 
 # ─────────────────────────── Helpers ─────────────────────────────────────────
 
@@ -77,6 +85,45 @@ def _get_ip() -> str:
     return request.headers.get("X-Forwarded-For", request.remote_addr or "")
 
 
+def _normalize_phone(phone: str) -> str:
+    return sanitize_str(phone or "", 32).replace(" ", "").replace("-", "")
+
+
+def _profile_avatar_folder() -> Path:
+    folder = _config().UPLOAD_FOLDER.parent / "profile_avatars"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def _is_allowed_avatar(filename: str) -> bool:
+    extension = Path(filename).suffix.lower().lstrip(".")
+    return extension in {"jpg", "jpeg", "png", "gif", "webp"}
+
+
+def _issue_otp(user_id: str, purpose: str, phone: str) -> str:
+    otp = f"{random.randint(100000, 999999)}"
+    _otp_store[(user_id, purpose)] = {
+        "otp": otp,
+        "phone": phone,
+        "expires_at": time.time() + _OTP_TTL_SECONDS,
+    }
+    return otp
+
+
+def _verify_otp(user_id: str, purpose: str, otp: str) -> tuple[bool, str]:
+    record = _otp_store.get((user_id, purpose))
+    if not record:
+        return False, "OTP was not requested."
+    if time.time() > record["expires_at"]:
+        _otp_store.pop((user_id, purpose), None)
+        return False, "OTP expired. Request a new OTP."
+    if sanitize_str(otp or "", 12) != record["otp"]:
+        return False, "Invalid OTP."
+
+    _otp_store.pop((user_id, purpose), None)
+    return True, ""
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # AUTH
 # ═════════════════════════════════════════════════════════════════════════════
@@ -88,27 +135,43 @@ def register():
     username = sanitize_str(body.get("username", ""), 50)
     password = body.get("password", "")
     email = sanitize_str(body.get("email", ""), 200)
+    full_name = sanitize_str(body.get("full_name", ""), 100)
+    requested_role = sanitize_str(body.get("role", "registered"), 30).lower()
+    allowed_self_service_roles = {"registered", "admin"}
 
     if not username or len(username) < 3:
         return _err("Username must be at least 3 characters.")
     if len(password) < 8:
         return _err("Password must be at least 8 characters.")
+    if requested_role not in allowed_self_service_roles:
+        return _err("Invalid role for self registration.", 400, "INVALID_ROLE")
 
     pw_hash = hash_password(password)
     try:
         with get_db() as conn:
+            if requested_role == "admin":
+                admin_count = conn.execute(
+                    "SELECT COUNT(*) FROM users WHERE role IN ('admin', 'administrator') AND is_active = 1"
+                ).fetchone()[0]
+                if admin_count:
+                    return _err("Administrator registration is closed. Ask an existing administrator to assign this role.", 403, "ADMIN_EXISTS")
+
             conn.execute(
-                "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
-                (username, email or None, pw_hash),
+                "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)",
+                (username, email or None, pw_hash, requested_role),
             )
             user = row_to_dict(conn.execute(
                 "SELECT id, username, email, role FROM users WHERE username = ?", (username,)
             ).fetchone())
-    except Exception:
+        
+        # Create user profile with role-derived permissions and preferences.
+        create_user_profile(user["id"], role=user["role"], full_name=full_name or username, email=email)
+    except Exception as e:
         return _err("Username already exists.", 409, "CONFLICT")
 
     token = create_access_token({"sub": user["id"], "username": user["username"], "role": user["role"]})
-    return _created({"user": user, "access_token": token})
+    profile = ProfileService.get_user_profile_data(user["id"]) or user
+    return _created({"user": profile, "access_token": token})
 
 
 @auth_bp.post("/login")
@@ -126,23 +189,126 @@ def login():
     if not user or not verify_password(password, user["password_hash"]):
         return _err("Invalid credentials.", 401, "INVALID_CREDENTIALS")
 
+    normalized_role = "admin" if user.get("role") in {"admin", "administrator"} else "registered"
+    if user.get("role") != normalized_role:
+        with get_db() as conn:
+            conn.execute("UPDATE users SET role = ? WHERE id = ?", (normalized_role, user["id"]))
+        user["role"] = normalized_role
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE users SET last_login = strftime('%Y-%m-%dT%H:%M:%fZ','now'), login_count = COALESCE(login_count, 0) + 1 WHERE id = ?",
+            (user["id"],),
+        )
+
+    if not get_user_profile(user["id"]):
+        create_user_profile(user["id"], role=user.get("role", "registered"), full_name=user["username"], email=user.get("email") or "")
+    else:
+        default_preferences = ProfileService.get_role_profile(user["role"])["default_preferences"]
+        current_preferences = ProfileService.get_user_preferences(user["id"])
+        ProfileService.update_user_profile(
+            user["id"],
+            permissions=ProfileService.ROLE_PERMISSIONS[user["role"]],
+            preferences={**default_preferences, **current_preferences},
+        )
+
     token = create_access_token({"sub": user["id"], "username": user["username"], "role": user["role"]})
     refresh = create_refresh_token(user["id"])
-    safe_user = {k: v for k, v in user.items() if k != "password_hash"}
+    safe_user = ProfileService.get_user_profile_data(user["id"]) or {k: v for k, v in user.items() if k != "password_hash"}
     return _ok({"user": safe_user, "access_token": token, "refresh_token": refresh})
+
+
+@auth_bp.post("/request-otp")
+@require_auth
+def request_otp():
+    body = request.get_json(silent=True) or {}
+    purpose = sanitize_str(body.get("purpose", ""), 40)
+    phone_number = _normalize_phone(body.get("phone_number", ""))
+    uid = g.current_user.get("sub")
+
+    if purpose not in {"change_password", "mobile_2fa"}:
+        return _err("Invalid OTP purpose.", 400, "INVALID_OTP_PURPOSE")
+    if not phone_number:
+        profile = get_user_profile(uid) or {}
+        phone_number = _normalize_phone(profile.get("phone_number", ""))
+    if not phone_number:
+        return _err("Mobile number is required to send OTP.", 400, "PHONE_REQUIRED")
+
+    otp = _issue_otp(uid, purpose, phone_number)
+    return _ok(
+        {
+            "sent": True,
+            "phone_number": phone_number,
+            "expires_in": _OTP_TTL_SECONDS,
+            "dev_otp": otp,
+        },
+        message="OTP generated for mobile verification.",
+    )
+
+
+@auth_bp.post("/change-password")
+@require_auth
+def change_password():
+    body = request.get_json(silent=True) or {}
+    current_password = body.get("current_password", "")
+    new_password = body.get("new_password", "")
+    otp = body.get("otp", "")
+    uid = g.current_user.get("sub")
+
+    if len(new_password) < 8:
+        return _err("New password must be at least 8 characters.", 400, "WEAK_PASSWORD")
+
+    otp_ok, otp_error = _verify_otp(uid, "change_password", otp)
+    if not otp_ok:
+        return _err(otp_error, 400, "INVALID_OTP")
+
+    with get_db() as conn:
+        user = row_to_dict(conn.execute(
+            "SELECT id, password_hash FROM users WHERE id = ? AND is_active = 1", (uid,)
+        ).fetchone())
+        if not user or not verify_password(current_password, user["password_hash"]):
+            return _err("Current password is incorrect.", 401, "INVALID_PASSWORD")
+        conn.execute(
+            "UPDATE users SET password_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
+            (hash_password(new_password), uid),
+        )
+
+    return _ok({"changed": True}, message="Password changed successfully.")
+
+
+@auth_bp.post("/guest")
+def guest_login():
+    """Return the guest role profile used by the unauthenticated UI."""
+    return _ok({
+        "user": {
+            "id": "guest",
+            "username": "Guest",
+            "email": None,
+            "role": "guest",
+            "profile": {
+                "full_name": "Guest User",
+                "permissions": ProfileService.ROLE_PERMISSIONS["guest"],
+                "preferences": ProfileService.get_role_profile("guest")["default_preferences"],
+                "profile_status": "active",
+            },
+            "role_metadata": ProfileService.get_role_profile("guest"),
+        },
+        "access_token": "",
+    })
 
 
 @auth_bp.get("/me")
 @require_auth
 def me():
     uid = g.current_user.get("sub")
-    with get_db() as conn:
-        user = row_to_dict(conn.execute(
-            "SELECT id, username, email, role, created_at FROM users WHERE id = ?", (uid,)
-        ).fetchone())
-    if not user:
+    # Get user with profile data
+    user_with_profile = get_user_with_profile(uid)
+    if not user_with_profile:
         return _err("User not found.", 404)
-    return _ok(user)
+    
+    # Update last active
+    ProfileService.update_last_active(uid)
+    
+    return _ok(user_with_profile)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -150,7 +316,7 @@ def me():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @data_bp.get("/datasets")
-@require_auth
+@jwt_required
 def get_datasets():
     limit  = min(int(request.args.get("limit", 100)), 500)
     offset = int(request.args.get("offset", 0))
@@ -158,7 +324,7 @@ def get_datasets():
 
 
 @data_bp.get("/datasets/search")
-@require_auth
+@jwt_required
 def search_datasets():
     q = sanitize_search_query(request.args.get("q", ""))
     if not q:
@@ -268,7 +434,7 @@ def advanced_search():
 
 
 @data_bp.get("/datasets/stats")
-@require_auth
+@jwt_required
 def dataset_stats():
     return _ok(DatasetService.stats())
 
@@ -302,7 +468,7 @@ def check_duplicate():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @upload_bp.post("/upload/file")
-@require_auth
+@require_permission("upload")
 @rate_limit(max_requests=20, window_seconds=3600)
 def upload_file():
     if "file" not in request.files:
@@ -378,7 +544,7 @@ def upload_file():
 
 
 @upload_bp.post("/upload/url")
-@require_auth
+@require_permission("upload")
 @rate_limit(max_requests=10, window_seconds=3600)
 def upload_from_url():
     body = request.get_json(silent=True) or {}
@@ -402,8 +568,6 @@ def upload_from_url():
     from urllib.parse import urlparse
     url_path = urlparse(url).path
     filename = sanitize_filename(os.path.basename(url_path) or f"download_{uuid.uuid4().hex[:8]}")
-    if not is_allowed_extension(filename):
-        filename = filename + ".bin"
 
     upload_folder = _config().UPLOAD_FOLDER
     upload_folder.mkdir(parents=True, exist_ok=True)
@@ -533,7 +697,7 @@ def get_monitor_status():
 
 
 @monitor_bp.post("/monitor/start")
-@require_role("admin", "operator")
+@require_role("admin")
 def start_monitor_route():
     started = start_monitor()
     return _ok({"started": started})
@@ -547,7 +711,7 @@ def stop_monitor_route():
 
 
 @monitor_bp.get("/scan-logs")
-@require_auth
+@jwt_required
 def get_scan_logs():
     limit = min(int(request.args.get("limit", 100)), 500)
     return _ok(ScanLogService.get_recent(limit))
@@ -570,7 +734,7 @@ _MAX_HISTORY = 20
 
 
 @ai_bp.post("/chat")
-@require_auth
+@jwt_required
 @rate_limit(max_requests=60, window_seconds=3600)
 def chat_endpoint():
     body = request.get_json(silent=True) or {}
@@ -581,8 +745,17 @@ def chat_endpoint():
     if not message:
         return _err("message is required.")
 
+    current_user = g.get("current_user", None) or {
+        "sub": "guest",
+        "username": "Guest",
+        "role": "guest",
+    }
+    if current_user.get("role") == "guest" and len(message) > 500:
+        return _err("Guest AI chat is limited to 500 characters per message.", 403, "GUEST_LIMIT")
+    if current_user.get("role") != "guest" and not ProfileService.has_permission(current_user.get("sub"), "ai_chat"):
+        return _err("Insufficient permissions", 403, "FORBIDDEN")
+
     history = _chat_sessions.get(session_id, [])
-    current_user = g.get("current_user", {}) or {}
     reply = execute_chat_action(
         message,
         user_role=str(current_user.get("role", "")),
@@ -622,7 +795,7 @@ def ai_status():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @analytics_bp.get("/dashboard")
-@require_auth
+@jwt_required
 def get_dashboard():
     """Get comprehensive dashboard statistics."""
     stats = get_dashboard_stats()
@@ -630,7 +803,7 @@ def get_dashboard():
 
 
 @analytics_bp.get("/timeline")
-@require_auth
+@jwt_required
 def get_timeline():
     """Get timeline data for charts (daily uploads, duplicates, storage)."""
     days = min(int(request.args.get("days", 30)), 365)
@@ -639,7 +812,7 @@ def get_timeline():
 
 
 @analytics_bp.get("/file-types")
-@require_auth
+@jwt_required
 def get_file_types():
     """Get distribution of file types in repository."""
     distribution = get_file_type_distribution()
@@ -648,7 +821,7 @@ def get_file_types():
 
 @analytics_bp.get("/user-activity")
 @require_auth
-@require_role("admin", "operator")
+@require_role("admin")
 def get_user_activity_endpoint():
     """Get user activity metrics."""
     limit = min(int(request.args.get("limit", 50)), 500)
@@ -657,7 +830,7 @@ def get_user_activity_endpoint():
 
 
 @analytics_bp.get("/top-duplicates")
-@require_auth
+@jwt_required
 def get_top_duplicates_endpoint():
     """Get the most frequently duplicated files."""
     limit = min(int(request.args.get("limit", 20)), 100)
@@ -679,7 +852,7 @@ def get_system_health_endpoint():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @export_bp.post("/scan-results")
-@require_auth
+@require_permission("export_data")
 @rate_limit(max_requests=10, window_seconds=3600)
 def export_scan_results():
     """
@@ -704,7 +877,7 @@ def export_scan_results():
 
 
 @export_bp.post("/datasets")
-@require_auth
+@require_permission("export_data")
 @rate_limit(max_requests=5, window_seconds=3600)
 def export_datasets():
     """
@@ -727,8 +900,7 @@ def export_datasets():
 
 
 @export_bp.post("/cleanup")
-@require_auth
-@require_role("admin")
+@require_permission("export_data")
 def cleanup_exports():
     """Remove old export files (older than 7 days)."""
     days = int(request.args.get("days", 7))
@@ -740,7 +912,7 @@ def cleanup_exports():
 
 
 @export_bp.get("/list")
-@require_auth
+@require_permission("export_data")
 def list_exports():
     """List available export files."""
     export_dir = _config().UPLOAD_FOLDER / "exports"
@@ -759,7 +931,7 @@ def list_exports():
 
 
 @export_bp.get("/download")
-@require_auth
+@require_permission("export_data")
 def download_export():
     """Download an export file."""
     filename = sanitize_filename(request.args.get("file", ""))
@@ -801,7 +973,7 @@ def get_scan_progress():
 # ═════════════════════════════════════════════════════════════════════════════
 
 @duplicates_bp.get("/all")
-@require_auth
+@jwt_required
 def get_all_duplicates():
     """
     Get all duplicate groups in the system.
@@ -849,7 +1021,7 @@ def get_duplicates_for_file(dataset_id: str):
 
 
 @duplicates_bp.get("/by-name")
-@require_auth
+@jwt_required
 def find_duplicates_by_name():
     """
     Search for files with the same name (potential duplicates).
@@ -868,7 +1040,7 @@ def find_duplicates_by_name():
 
 
 @duplicates_bp.get("/statistics")
-@require_auth
+@jwt_required
 def get_duplicate_statistics():
     """
     Get comprehensive duplicate statistics for the system.
@@ -879,7 +1051,7 @@ def get_duplicate_statistics():
 
 
 @duplicates_bp.post("/mark-for-deduplication")
-@require_auth
+@require_permission("manage_alerts")
 def mark_for_deduplication():
     """
     Mark a duplicate group for deduplication.
@@ -922,7 +1094,7 @@ def mark_for_deduplication():
 
 
 @duplicates_bp.post("/scan-directory")
-@require_auth
+@require_permission("run_scanner")
 def scan_directory_for_duplicates():
     """
     Scan a directory on the file system for duplicates.
@@ -993,3 +1165,307 @@ def search_duplicates_by_filename():
         return _ok(result)
     except Exception as e:
         return _err(f"Search failed: {str(e)}", 500)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# USER PROFILES (Role-based profiles)
+# ═════════════════════════════════════════════════════════════════════════════
+
+@profile_bp.get("/me")
+@require_auth
+def get_my_profile():
+    """Get current user's complete profile with role metadata."""
+    uid = g.current_user.get("sub")
+    profile_data = ProfileService.get_user_profile_data(uid)
+    
+    if not profile_data:
+        return _err("Profile not found.", 404)
+    
+    return _ok(profile_data)
+
+
+@profile_bp.get("/avatar/<path:filename>")
+def get_profile_avatar(filename: str):
+    """Serve uploaded profile avatars."""
+    safe_name = sanitize_filename(filename)
+    if safe_name != filename or not _is_allowed_avatar(safe_name):
+        return _err("Avatar not found.", 404)
+    return send_from_directory(_profile_avatar_folder(), safe_name)
+
+
+@profile_bp.post("/avatar")
+@require_auth
+def upload_profile_avatar():
+    """Upload the current user's profile avatar and store its app-served URL."""
+    uid = g.current_user.get("sub")
+    file = request.files.get("avatar")
+    if not file or not file.filename:
+        return _err("Avatar image is required.", 400)
+
+    if not _is_allowed_avatar(file.filename):
+        return _err("Avatar must be a JPG, PNG, GIF, or WebP image.", 400)
+
+    if request.content_length and request.content_length > 5 * 1024 * 1024:
+        return _err("Avatar image must be 5 MB or smaller.", 413, "FILE_TOO_LARGE")
+
+    original_name = sanitize_filename(file.filename)
+    extension = Path(original_name).suffix.lower()
+    filename = f"{uid}_{uuid.uuid4().hex}{extension}"
+    destination = _profile_avatar_folder() / filename
+
+    try:
+        file.save(destination)
+        avatar_url = f"/api/profile/avatar/{filename}"
+        updated_profile = ProfileService.update_user_profile(uid, avatar_url=avatar_url)
+        return _ok({"avatar_url": avatar_url, "profile": updated_profile}, message="Profile photo uploaded.")
+    except Exception as exc:
+        return _err(f"Profile photo upload failed: {exc}", 500)
+
+
+@profile_bp.patch("/me")
+@require_auth
+def update_my_profile():
+    """Update current user's profile (full_name, bio, preferences, etc.)."""
+    uid = g.current_user.get("sub")
+    body = request.get_json(silent=True) or {}
+    
+    # Allowed fields for user to update
+    allowed_fields = [
+        "full_name", "bio", "avatar_url", "phone_number", "department", 
+        "title", "timezone", "language", "theme", "notifications_enabled",
+        "email_notifications", "preferences"
+    ]
+    
+    updates = {k: v for k, v in body.items() if k in allowed_fields and v is not None}
+    if isinstance(updates.get("preferences"), dict):
+        updates["preferences"].pop("two_factor_mobile_enabled", None)
+        current_preferences = ProfileService.get_user_preferences(uid)
+        updates["preferences"] = {**current_preferences, **updates["preferences"]}
+    
+    if not updates:
+        return _err("No valid fields to update.", 400)
+    
+    try:
+        updated_profile = ProfileService.update_user_profile(uid, **updates)
+        return _ok(updated_profile, message="Profile updated successfully.")
+    except Exception as exc:
+        return _err(f"Profile update failed: {exc}", 500)
+
+
+@profile_bp.post("/2fa-mobile")
+@require_auth
+def update_mobile_2fa():
+    """Enable or disable mobile 2FA. Enabling requires a mobile OTP."""
+    uid = g.current_user.get("sub")
+    body = request.get_json(silent=True) or {}
+    enabled = bool(body.get("enabled"))
+    phone_number = _normalize_phone(body.get("phone_number", ""))
+
+    if enabled:
+        if not phone_number:
+            return _err("Mobile number is required to enable 2FA.", 400, "PHONE_REQUIRED")
+        otp_ok, otp_error = _verify_otp(uid, "mobile_2fa", body.get("otp", ""))
+        if not otp_ok:
+            return _err(otp_error, 400, "INVALID_OTP")
+
+    preferences = ProfileService.get_user_preferences(uid)
+    preferences["two_factor_mobile_enabled"] = enabled
+
+    try:
+        updated_profile = ProfileService.update_user_profile(
+            uid,
+            phone_number=phone_number,
+            preferences=preferences,
+        )
+        return _ok(updated_profile, message="Mobile 2FA updated successfully.")
+    except Exception as exc:
+        return _err(f"Mobile 2FA update failed: {exc}", 500)
+
+
+@profile_bp.get("/role-info")
+def get_role_info():
+    """Get information about all roles and their permissions."""
+    return _ok(ProfileService.get_role_summary())
+
+
+@profile_bp.get("/role-info/<role>")
+def get_role_details(role: str):
+    """Get detailed information about a specific role."""
+    role = sanitize_str(role, 50).lower()
+    role_info = ProfileService.get_role_profile(role)
+    
+    if not role_info:
+        return _err(f"Role '{role}' not found.", 404)
+    
+    return _ok(role_info)
+
+
+@profile_bp.get("/users")
+@require_auth
+@require_role("admin")
+def get_all_users_profiles():
+    """Get all user profiles (admin only)."""
+    limit = min(int(request.args.get("limit", 100)), 500)
+    offset = int(request.args.get("offset", 0))
+    
+    profiles = ProfileService.get_all_profiles(limit, offset)
+    return _ok({
+        "profiles": profiles,
+        "total": len(profiles),
+        "limit": limit,
+        "offset": offset
+    })
+
+
+@profile_bp.get("/users/role/<role>")
+@require_auth
+@require_role("admin")
+def get_users_by_role(role: str):
+    """Get all users with a specific role (admin only)."""
+    role = sanitize_str(role, 50).lower()
+    limit = min(int(request.args.get("limit", 100)), 500)
+    
+    profiles = ProfileService.get_profiles_by_role(role, limit)
+    return _ok({
+        "role": role,
+        "profiles": profiles,
+        "total": len(profiles)
+    })
+
+
+@profile_bp.get("/users/<user_id>")
+@require_auth
+def get_user_profile(user_id: str):
+    """Get a specific user's profile."""
+    user_id = sanitize_str(user_id, 128)
+    profile_data = ProfileService.get_user_profile_data(user_id)
+    
+    if not profile_data:
+        return _err("User profile not found.", 404)
+    
+    # Check if user is requesting their own profile or if requester is admin
+    current_uid = g.current_user.get("sub")
+    current_user_role = g.current_user.get("role")
+    
+    if current_uid != user_id and current_user_role != "admin":
+        return _err("You don't have permission to view this profile.", 403)
+    
+    return _ok(profile_data)
+
+
+@profile_bp.get("/users/<user_id>/stats")
+@require_auth
+def get_user_stats(user_id: str):
+    """Get user statistics."""
+    user_id = sanitize_str(user_id, 128)
+    
+    # Check permission
+    current_uid = g.current_user.get("sub")
+    current_user_role = g.current_user.get("role")
+    
+    if current_uid != user_id and current_user_role != "admin":
+        return _err("You don't have permission to view these stats.", 403)
+    
+    stats = ProfileService.get_user_stats(user_id)
+    if not stats:
+        return _err("User not found.", 404)
+    
+    return _ok(stats)
+
+
+@profile_bp.get("/users/<user_id>/permissions")
+@require_auth
+def get_user_permissions(user_id: str):
+    """Get user's permissions."""
+    user_id = sanitize_str(user_id, 128)
+    
+    # Check permission
+    current_uid = g.current_user.get("sub")
+    current_user_role = g.current_user.get("role")
+    
+    if current_uid != user_id and current_user_role != "admin":
+        return _err("You don't have permission to view these permissions.", 403)
+    
+    permissions = ProfileService.get_user_permissions(user_id)
+    if not permissions and user_id != current_uid:
+        return _err("User not found.", 404)
+    
+    return _ok({"user_id": user_id, "permissions": permissions})
+
+
+@profile_bp.patch("/users/<user_id>")
+@require_auth
+@require_role("admin")
+def update_user_profile_admin(user_id: str):
+    """Update a user's profile (admin only)."""
+    user_id = sanitize_str(user_id, 128)
+    body = request.get_json(silent=True) or {}
+    
+    # Admin can update more fields
+    allowed_fields = [
+        "full_name", "bio", "avatar_url", "phone_number", "department",
+        "title", "timezone", "language", "theme", "notifications_enabled",
+        "email_notifications", "preferences", "is_verified", "profile_status",
+        "permissions"
+    ]
+    
+    updates = {k: v for k, v in body.items() if k in allowed_fields and v is not None}
+    
+    if not updates:
+        return _err("No valid fields to update.", 400)
+    
+    try:
+        updated_profile = ProfileService.update_user_profile(user_id, **updates)
+        if not updated_profile:
+            return _err("User not found.", 404)
+        return _ok(updated_profile, message="User profile updated successfully.")
+    except Exception as exc:
+        return _err(f"Profile update failed: {exc}", 500)
+
+
+@profile_bp.post("/users/<user_id>/verify")
+@require_auth
+@require_role("admin")
+def verify_user_profile(user_id: str):
+    """Verify a user profile (admin only)."""
+    user_id = sanitize_str(user_id, 128)
+    
+    try:
+        updated_profile = ProfileService.update_user_profile(user_id, is_verified=1)
+        if not updated_profile:
+            return _err("User not found.", 404)
+        return _ok(updated_profile, message="User profile verified.")
+    except Exception as exc:
+        return _err(f"Verification failed: {exc}", 500)
+
+
+@profile_bp.post("/users/<user_id>/suspend")
+@require_auth
+@require_role("admin")
+def suspend_user_profile(user_id: str):
+    """Suspend a user profile (admin only)."""
+    user_id = sanitize_str(user_id, 128)
+    
+    try:
+        updated_profile = ProfileService.update_user_profile(user_id, profile_status="suspended")
+        if not updated_profile:
+            return _err("User not found.", 404)
+        return _ok(updated_profile, message="User profile suspended.")
+    except Exception as exc:
+        return _err(f"Suspension failed: {exc}", 500)
+
+
+@profile_bp.post("/users/<user_id>/activate")
+@require_auth
+@require_role("admin")
+def activate_user_profile(user_id: str):
+    """Activate a suspended user profile (admin only)."""
+    user_id = sanitize_str(user_id, 128)
+    
+    try:
+        updated_profile = ProfileService.update_user_profile(user_id, profile_status="active")
+        if not updated_profile:
+            return _err("User not found.", 404)
+        return _ok(updated_profile, message="User profile activated.")
+    except Exception as exc:
+        return _err(f"Activation failed: {exc}", 500)
