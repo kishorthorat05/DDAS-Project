@@ -34,7 +34,12 @@ class _DDASEventHandler(FileSystemEventHandler):
         _process_file(event.dest_path, triggered_by="watchdog_move")
 
 
-def _process_file(file_path: str, triggered_by: str = "manual") -> dict:
+def _process_file(
+    file_path: str,
+    triggered_by: str = "manual",
+    user_id: str | None = None,
+    user_name: str = "System",
+) -> dict:
     """
     Core pipeline:
     1. Compute hash
@@ -85,7 +90,8 @@ def _process_file(file_path: str, triggered_by: str = "manual") -> dict:
             # Log history
             HistoryService.log(
                 dataset_id=existing["id"],
-                user_name="System",
+                user_id=user_id,
+                user_name=user_name,
                 file_name=file_name,
                 file_hash=file_hash,
                 action="auto_scan",
@@ -100,7 +106,8 @@ def _process_file(file_path: str, triggered_by: str = "manual") -> dict:
                 file_size=file_size,
                 file_path=file_path,
                 file_type=file_type,
-                user_name="System",
+                user_name=user_name,
+                user_id=user_id,
             )
 
         # Scan log
@@ -124,23 +131,38 @@ def _process_file(file_path: str, triggered_by: str = "manual") -> dict:
     return result
 
 
-def manual_scan(directory: str | None = None) -> dict:
+def manual_scan(
+    directory: str | None = None,
+    user_id: str | None = None,
+    user_name: str = "System",
+) -> dict:
     """Scan all files in a directory. Returns summary."""
     scan_dir = directory or _config().MONITORED_DIR
     results = {"scanned": 0, "duplicates": 0, "errors": 0, "directory": scan_dir}
 
     if not os.path.isdir(scan_dir):
-        results["error"] = f"Directory not found: {scan_dir}"
-        return results
+        os.makedirs(scan_dir, exist_ok=True)
 
     for entry in os.scandir(scan_dir):
         if entry.is_file():
-            r = _process_file(entry.path, triggered_by="manual_scan")
+            r = _process_file(
+                entry.path,
+                triggered_by="manual_scan",
+                user_id=user_id,
+                user_name=user_name,
+            )
             results["scanned"] += 1
             if r.get("is_duplicate"):
                 results["duplicates"] += 1
             if r.get("error"):
                 results["errors"] += 1
+
+    if results["scanned"] == 0:
+        ScanLogService.log(
+            file_path=scan_dir,
+            file_name="No files found",
+            error="No files found to scan",
+        )
 
     return results
 

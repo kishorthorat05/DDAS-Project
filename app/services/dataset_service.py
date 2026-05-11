@@ -54,6 +54,7 @@ class DatasetService:
         file_path: str,
         file_type: str = "",
         user_name: str = "System",
+        user_id: str | None = None,
         period: str | None = None,
         spatial_domain: str | None = None,
         attributes: dict | None = None,
@@ -64,10 +65,10 @@ class DatasetService:
             conn.execute(
                 """INSERT INTO datasets
                    (file_hash, file_name, file_size, file_path, file_type,
-                    user_name, period, spatial_domain, attributes, description)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    user_name, user_id, period, spatial_domain, attributes, description)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (file_hash, file_name, file_size, file_path, file_type,
-                 user_name, period, spatial_domain, attrs_json, description),
+                 user_name, user_id, period, spatial_domain, attrs_json, description),
             )
             row = conn.execute(
                 "SELECT * FROM datasets WHERE file_hash = ?", (file_hash,)
@@ -285,6 +286,7 @@ class HistoryService:
     def log(
         dataset_id: str | None,
         user_name: str = "System",
+        user_id: str | None = None,
         file_name: str = "",
         file_hash: str = "",
         action: str = "download_attempt",
@@ -295,9 +297,9 @@ class HistoryService:
         with get_db() as conn:
             conn.execute(
                 """INSERT INTO download_history
-                   (dataset_id, user_name, file_name, file_hash, action, status, ip_address, notes)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (dataset_id, user_name, file_name, file_hash,
+                   (dataset_id, user_id, user_name, file_name, file_hash, action, status, ip_address, notes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (dataset_id, user_id, user_name, file_name, file_hash,
                  action, status, ip_address, notes),
             )
 
@@ -313,8 +315,17 @@ class HistoryService:
         return rows_to_list(rows)
 
     @staticmethod
-    def get_recent(limit: int = 100) -> list[dict]:
+    def get_recent(limit: int = 100, user_id: str | None = None, user_name: str | None = None) -> list[dict]:
         with get_db() as conn:
+            if user_id:
+                rows = conn.execute(
+                    """SELECT * FROM download_history
+                       WHERE user_id = ? OR (user_id IS NULL AND user_name = ?)
+                       ORDER BY attempt_timestamp DESC LIMIT ?""",
+                    (user_id, user_name or "", limit),
+                ).fetchall()
+                return rows_to_list(rows)
+
             rows = conn.execute(
                 "SELECT * FROM download_history ORDER BY attempt_timestamp DESC LIMIT ?",
                 (limit,),

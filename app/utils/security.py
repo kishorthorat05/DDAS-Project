@@ -90,6 +90,20 @@ def require_auth(f: Callable) -> Callable:
     def wrapper(*args, **kwargs):
         if g.current_user is None:
             return jsonify({"error": "Authentication required", "code": "AUTH_REQUIRED"}), 401
+        user_id = g.current_user.get("sub")
+        if user_id:
+            from app.models.database import get_db, row_to_dict
+
+            with get_db() as conn:
+                user = row_to_dict(conn.execute(
+                    "SELECT role, is_active FROM users WHERE id = ?", (user_id,)
+                ).fetchone())
+
+            if not user:
+                return jsonify({"error": "Authentication required", "code": "AUTH_REQUIRED"}), 401
+            if not user.get("is_active"):
+                return jsonify({"error": "Account is inactive. Contact an administrator.", "code": "ACCOUNT_INACTIVE"}), 403
+            g.current_user["role"] = "admin" if user.get("role") in {"admin", "administrator"} else user.get("role", "registered")
         return f(*args, **kwargs)
     return wrapper
 
@@ -224,11 +238,13 @@ def rate_limit(max_requests: int = 30, window_seconds: int = 60, key_fn: Callabl
     def decorator(f: Callable) -> Callable:
         @wraps(f)
         def wrapper(*args, **kwargs):
+            if request.endpoint in {"auth.register", "auth.login"}:
+                return f(*args, **kwargs)
             ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
             key = key_fn(request) if key_fn else f"{f.__name__}:{ip}"
             if not _rate_limiter.is_allowed(key, max_requests, window_seconds):
                 return jsonify({
-                    "error": "Rate limit exceeded. Please slow down.",
+                    "error": "Too many requests.",
                     "code": "RATE_LIMITED",
                     "retry_after": window_seconds,
                 }), 429

@@ -19,7 +19,7 @@ class ProfileService:
         "guest": ["view_dashboard", "view_analytics"],
         "registered": [
             "view_dashboard", "view_analytics", "view_datasets", 
-            "download", "upload", "create_alerts", "ai_chat", "export_data"
+            "download", "upload", "create_alerts", "ai_chat", "export_data", "run_scanner"
         ],
         "admin": ["*"]  # All permissions
     }
@@ -144,14 +144,17 @@ class ProfileService:
     @staticmethod
     def has_permission(user_id: str, permission: str) -> bool:
         """Check if user has a specific permission."""
-        profile = get_user_profile(user_id)
-        if not profile:
+        user = get_user_with_profile(user_id)
+        if not user:
             return False
+        profile = user.get("profile") or {}
         
         try:
             permissions = json.loads(profile.get("permissions", "[]"))
         except (json.JSONDecodeError, TypeError):
             permissions = []
+        role_permissions = ProfileService.ROLE_PERMISSIONS.get(user.get("role", "registered"), [])
+        permissions = list(set(permissions) | set(role_permissions))
         
         # Admin has all permissions
         if "*" in permissions:
@@ -162,16 +165,18 @@ class ProfileService:
     @staticmethod
     def get_user_permissions(user_id: str) -> list[str]:
         """Get all permissions for a user."""
-        profile = get_user_profile(user_id)
-        if not profile:
+        user = get_user_with_profile(user_id)
+        if not user:
             return []
+        profile = user.get("profile") or {}
         
         try:
             permissions = json.loads(profile.get("permissions", "[]"))
         except (json.JSONDecodeError, TypeError):
             permissions = []
         
-        return permissions
+        role_permissions = ProfileService.ROLE_PERMISSIONS.get(user.get("role", "registered"), [])
+        return list(set(permissions) | set(role_permissions))
     
     @staticmethod
     def get_user_preferences(user_id: str) -> dict:

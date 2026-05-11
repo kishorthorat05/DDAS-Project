@@ -2,6 +2,7 @@
 DDAS Flask application factory.
 Registers all blueprints, middleware, CORS, and error handlers.
 """
+import logging
 import threading
 import time
 from pathlib import Path
@@ -23,6 +24,19 @@ def create_app(config_object=None) -> Flask:
         static_folder=str(Path(__file__).parent.parent / "static"),
         template_folder=str(Path(__file__).parent.parent / "templates"),
     )
+
+    # ── Logging Configuration ─────────────────────────────────────────────────
+    logging.basicConfig(
+        level=logging.INFO if app.config.get("DEBUG", False) else logging.WARNING,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('logs/ddas.log', mode='a') if not app.config.get("TESTING", False) else logging.NullHandler()
+        ]
+    )
+    # Reduce noisy loggers
+    logging.getLogger('werkzeug').setLevel(logging.WARNING)
+    logging.getLogger('watchdog').setLevel(logging.WARNING)
 
     # ── Config ────────────────────────────────────────────────────────────────
     app.config.from_object(config_cls)

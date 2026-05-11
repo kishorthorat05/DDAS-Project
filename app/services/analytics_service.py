@@ -67,7 +67,9 @@ def get_dashboard_stats() -> Dict:
         "total_users": total_users,
         "active_users_30d": active_users,
         "unread_alerts": unread_alerts,
+        "total_storage_bytes": storage_bytes,
         "total_storage_gb": storage_bytes / (1024 ** 3),
+        "bandwidth_saved_bytes": duplicates_size,
         "bandwidth_saved_gb": duplicates_size / (1024 ** 3),
         "storage_efficiency": ((duplicates_size / max(storage_bytes, 1)) * 100) if storage_bytes > 0 else 0,
         "new_files_7d": recent_files,
@@ -148,9 +150,9 @@ def get_user_activity(limit: int = 50) -> List[Dict]:
                 user_name,
                 COUNT(*) as total_actions,
                 SUM(CASE WHEN action = 'web_upload' THEN 1 ELSE 0 END) as uploads,
-                SUM(CASE WHEN action = 'auto_scan' THEN 1 ELSE 0 END) as scans,
-                MAX(created_at) as last_activity
-            FROM history
+                SUM(CASE WHEN action IN ('auto_scan', 'manual_scan', 'directory_scan') THEN 1 ELSE 0 END) as scans,
+                MAX(attempt_timestamp) as last_activity
+            FROM download_history
             GROUP BY user_name
             ORDER BY total_actions DESC
             LIMIT ?

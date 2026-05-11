@@ -15,7 +15,7 @@ DEFAULT_ROLES = {
         "run_scanner", "start_monitor", "export_data", "ai_chat"
     ],
     "registered": [
-        "upload", "download", "view_analytics", "export_data", "ai_chat"
+        "upload", "download", "view_analytics", "export_data", "ai_chat", "run_scanner"
     ],
     "guest": [
         "view_analytics"

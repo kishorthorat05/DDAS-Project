@@ -4,6 +4,7 @@ All endpoints return JSON. Auth via JWT Bearer token.
 """
 import os
 import random
+import sqlite3
 import time
 import uuid
 from datetime import datetime
@@ -36,7 +37,10 @@ from app.utils.security import (
     sanitize_filename, sanitize_search_query, sanitize_str,
     hash_password, verify_password, create_access_token, create_refresh_token,
 )
-from app.models.database import get_db, row_to_dict, create_user_profile, get_user_with_profile, get_user_profile
+from app.models.database import (
+    get_db, row_to_dict, create_user_profile, get_user_with_profile,
+    get_user_profile as db_get_user_profile,
+)
 from config.settings import get_config
 
 
@@ -129,7 +133,6 @@ def _verify_otp(user_id: str, purpose: str, otp: str) -> tuple[bool, str]:
 # ═════════════════════════════════════════════════════════════════════════════
 
 @auth_bp.post("/register")
-@rate_limit(max_requests=5, window_seconds=3600)
 def register():
     body = request.get_json(silent=True) or {}
     username = sanitize_str(body.get("username", ""), 50)
@@ -154,7 +157,7 @@ def register():
                     "SELECT COUNT(*) FROM users WHERE role IN ('admin', 'administrator') AND is_active = 1"
                 ).fetchone()[0]
                 if admin_count:
-                    return _err("Administrator registration is closed. Ask an existing administrator to assign this role.", 403, "ADMIN_EXISTS")
+                    requested_role = "registered"
 
             conn.execute(
                 "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)",
@@ -163,11 +166,15 @@ def register():
             user = row_to_dict(conn.execute(
                 "SELECT id, username, email, role FROM users WHERE username = ?", (username,)
             ).fetchone())
-        
+
         # Create user profile with role-derived permissions and preferences.
         create_user_profile(user["id"], role=user["role"], full_name=full_name or username, email=email)
-    except Exception as e:
-        return _err("Username already exists.", 409, "CONFLICT")
+    except sqlite3.IntegrityError as exc:
+        if "users.email" in str(exc):
+            return _err("Email already exists. Use another email or leave it blank.", 409, "CONFLICT")
+        return _err("Username already exists. Choose another username.", 409, "CONFLICT")
+    except Exception:
+        return _err("Registration failed. Please try again.", 500, "REGISTER_FAILED")
 
     token = create_access_token({"sub": user["id"], "username": user["username"], "role": user["role"]})
     profile = ProfileService.get_user_profile_data(user["id"]) or user
@@ -175,7 +182,6 @@ def register():
 
 
 @auth_bp.post("/login")
-@rate_limit(max_requests=10, window_seconds=300)
 def login():
     body = request.get_json(silent=True) or {}
     username = sanitize_str(body.get("username", ""), 50)
@@ -200,7 +206,7 @@ def login():
             (user["id"],),
         )
 
-    if not get_user_profile(user["id"]):
+    if not db_get_user_profile(user["id"]):
         create_user_profile(user["id"], role=user.get("role", "registered"), full_name=user["username"], email=user.get("email") or "")
     else:
         default_preferences = ProfileService.get_role_profile(user["role"])["default_preferences"]
@@ -228,7 +234,7 @@ def request_otp():
     if purpose not in {"change_password", "mobile_2fa"}:
         return _err("Invalid OTP purpose.", 400, "INVALID_OTP_PURPOSE")
     if not phone_number:
-        profile = get_user_profile(uid) or {}
+        profile = db_get_user_profile(uid) or {}
         phone_number = _normalize_phone(profile.get("phone_number", ""))
     if not phone_number:
         return _err("Mobile number is required to send OTP.", 400, "PHONE_REQUIRED")
@@ -304,10 +310,10 @@ def me():
     user_with_profile = get_user_with_profile(uid)
     if not user_with_profile:
         return _err("User not found.", 404)
-    
+
     # Update last active
     ProfileService.update_last_active(uid)
-    
+
     return _ok(user_with_profile)
 
 
@@ -376,12 +382,12 @@ def filter_by_size():
         limit = int(request.args.get("limit", 100))
     except ValueError:
         return _err("Size parameters must be integers.", 400)
-    
+
     if min_size < 0 or (max_size is not None and max_size < 0):
         return _err("Size values must be non-negative.", 400)
     if max_size is not None and min_size > max_size:
         return _err("Min size cannot be greater than max size.", 400)
-    
+
     return _ok(DatasetService.filter_by_size_range(min_size, max_size, limit=limit))
 
 
@@ -392,10 +398,10 @@ def filter_by_date():
     start_date = request.args.get("start")
     end_date = request.args.get("end")
     limit = int(request.args.get("limit", 100))
-    
+
     if not start_date and not end_date:
         return _err("At least one of 'start' or 'end' date is required.", 400)
-    
+
     return _ok(DatasetService.filter_by_date_range(start_date, end_date, limit=limit))
 
 
@@ -404,7 +410,7 @@ def filter_by_date():
 def advanced_search():
     """Advanced search with multiple filters combined."""
     body = request.get_json(silent=True) or {}
-    
+
     query = body.get("query")
     file_name = body.get("file_name")
     file_path = body.get("file_path")
@@ -414,11 +420,11 @@ def advanced_search():
     start_date = body.get("start_date")
     end_date = body.get("end_date")
     limit = int(body.get("limit", 100))
-    
+
     # At least one filter should be provided
     if not any([query, file_name, file_path, file_type, min_size is not None, max_size is not None, start_date, end_date]):
         return _err("At least one search/filter parameter is required.", 400)
-    
+
     results = DatasetService.advanced_search(
         query=query,
         file_name=file_name,
@@ -482,7 +488,9 @@ def upload_file():
     if not is_allowed_extension(filename):
         return _err(f"File type not allowed: {Path(filename).suffix}")
 
-    user_name  = sanitize_str(request.form.get("user_name", "Anonymous"), 100)
+    current_user = g.get("current_user", {}) or {}
+    user_id = current_user.get("sub")
+    user_name  = sanitize_str(request.form.get("user_name", current_user.get("username", "Anonymous")), 100)
     description= sanitize_str(request.form.get("description", ""), 500)
     period     = sanitize_str(request.form.get("period", ""), 100)
     spatial_domain = sanitize_str(request.form.get("spatial_domain", ""), 200)
@@ -505,6 +513,7 @@ def upload_file():
     if existing:
         HistoryService.log(
             dataset_id=existing["id"],
+            user_id=user_id,
             user_name=user_name,
             file_name=filename,
             file_hash=file_hash,
@@ -530,11 +539,12 @@ def upload_file():
     ds = DatasetService.create(
         file_hash=file_hash, file_name=filename, file_size=file_size,
         file_path=str(dest), file_type=file_type, user_name=user_name,
+        user_id=user_id,
         period=period or None, spatial_domain=spatial_domain or None,
         description=description or None,
     )
     HistoryService.log(
-        dataset_id=ds["id"], user_name=user_name, file_name=filename,
+        dataset_id=ds["id"], user_id=user_id, user_name=user_name, file_name=filename,
         file_hash=file_hash, action="web_upload", status="success", ip_address=_get_ip(),
     )
 
@@ -549,7 +559,9 @@ def upload_file():
 def upload_from_url():
     body = request.get_json(silent=True) or {}
     url  = sanitize_str(body.get("url", ""), 2000)
-    user_name   = sanitize_str(body.get("user_name", "Anonymous"), 100)
+    current_user = g.get("current_user", {}) or {}
+    user_id = current_user.get("sub")
+    user_name   = sanitize_str(body.get("user_name", current_user.get("username", "Anonymous")), 100)
     description = sanitize_str(body.get("description", ""), 500)
 
     if not url:
@@ -592,6 +604,7 @@ def upload_from_url():
     ds = DatasetService.create(
         file_hash=file_hash, file_name=filename, file_size=file_size,
         file_path=str(dest), file_type=file_type, user_name=user_name,
+        user_id=user_id,
         description=description or None,
     )
     insights = get_file_insights(filename, file_size, file_type, description)
@@ -633,12 +646,11 @@ def mark_all_alerts_read():
 
 @monitor_bp.post("/monitor/scan")
 @require_auth
-@rate_limit(max_requests=5, window_seconds=60)
 def trigger_scan():
     """Scan the monitored directory or a specified directory for duplicates."""
     body = request.get_json(silent=True) or {}
     directory = sanitize_str(body.get("directory", ""), 500)
-    
+
     # If directory is specified, validate and scan it
     if directory:
         dir_path = Path(directory)
@@ -646,20 +658,27 @@ def trigger_scan():
             return _err(f"Directory not found: {directory}", 404)
         if not dir_path.is_dir():
             return _err(f"Path is not a directory: {directory}", 400)
-    
+
     try:
         # Perform scan
-        result = manual_scan(directory or None)
-        
+        current_user = g.get("current_user", {}) or {}
+        scan_directory = directory or str(_config().UPLOAD_FOLDER)
+        result = manual_scan(
+            scan_directory,
+            user_id=current_user.get("sub"),
+            user_name=current_user.get("username", "System"),
+        )
+
         # Create export if scanning custom directory
         export_zip = None
         if directory:
             export_zip = create_zip_export(result, include_metadata=True)
-        
+
         # Log the scan if it was successful
         if result.get("scanned", 0) > 0:
             HistoryService.log(
                 dataset_id=None,
+                user_id=current_user.get("sub"),
                 user_name=g.get("current_user", {}).get("username", "System"),
                 file_name=f"Manual scan: {directory or 'monitored dir'}",
                 file_hash="",
@@ -667,14 +686,14 @@ def trigger_scan():
                 status="completed",
                 notes=f"Scanned {result.get('scanned', 0)} files, found {result.get('duplicates', 0)} duplicates",
             )
-        
+
         response_data = {
             "scanned": result.get("scanned", 0),
             "duplicates": result.get("duplicates", 0),
             "errors": result.get("errors", 0),
             "directory": result.get("directory", ""),
         }
-        
+
         if export_zip:
             response_data["export_zip"] = Path(export_zip).name
             response_data["summary"] = {
@@ -682,7 +701,7 @@ def trigger_scan():
                 "duplicates_found": result.get("duplicates", 0),
                 "errors": result.get("errors", 0),
             }
-        
+
         return _ok(response_data, message=f"Scan complete: {result.get('scanned', 0)} files scanned, {result.get('duplicates', 0)} duplicates found")
     except PermissionError:
         return _err("Permission denied accessing directory.", 403)
@@ -721,7 +740,15 @@ def get_scan_logs():
 @require_auth
 def get_history():
     limit = min(int(request.args.get("limit", 100)), 500)
-    return _ok(HistoryService.get_recent(limit))
+    current_user = g.get("current_user", {}) or {}
+    include_all = request.args.get("scope") == "all" and current_user.get("role") == "admin"
+    if include_all:
+        return _ok(HistoryService.get_recent(limit))
+    return _ok(HistoryService.get_recent(
+        limit,
+        user_id=current_user.get("sub"),
+        user_name=current_user.get("username"),
+    ))
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -755,7 +782,8 @@ def chat_endpoint():
     if current_user.get("role") != "guest" and not ProfileService.has_permission(current_user.get("sub"), "ai_chat"):
         return _err("Insufficient permissions", 403, "FORBIDDEN")
 
-    history = _chat_sessions.get(session_id, [])
+    session_key = f"{current_user.get('sub', 'guest')}:{session_id}"
+    history = _chat_sessions.get(session_key, [])
     reply = execute_chat_action(
         message,
         user_role=str(current_user.get("role", "")),
@@ -766,7 +794,7 @@ def chat_endpoint():
 
     history.append({"role": "user", "content": message})
     history.append({"role": "assistant", "content": reply})
-    _chat_sessions[session_id] = history[-_MAX_HISTORY:]
+    _chat_sessions[session_key] = history[-_MAX_HISTORY:]
 
     return _ok({"reply": reply, "session_id": session_id})
 
@@ -776,7 +804,8 @@ def chat_endpoint():
 def clear_chat():
     body = request.get_json(silent=True) or {}
     session_id = sanitize_str(body.get("session_id", "default"), 64)
-    _chat_sessions.pop(session_id, None)
+    current_user = g.get("current_user", {}) or {}
+    _chat_sessions.pop(f"{current_user.get('sub', 'guest')}:{session_id}", None)
     return _ok(message="Chat history cleared.")
 
 
@@ -861,10 +890,10 @@ def export_scan_results():
     """
     body = request.get_json(silent=True) or {}
     scan_results = body.get("scan_results", {})
-    
+
     if not scan_results:
         return _err("scan_results required.", 400)
-    
+
     try:
         zip_path = create_zip_export(scan_results, include_metadata=True)
         return _ok({
@@ -886,7 +915,7 @@ def export_datasets():
     """
     body = request.get_json(silent=True) or {}
     filter_criteria = body.get("filters", {})
-    
+
     try:
         zip_path = export_filtered_datasets(filter_criteria)
         return _ok({
@@ -918,7 +947,7 @@ def list_exports():
     export_dir = _config().UPLOAD_FOLDER / "exports"
     if not export_dir.exists():
         return _ok([])
-    
+
     exports = []
     for file_path in sorted(export_dir.glob("*.zip"), reverse=True)[:50]:
         exports.append({
@@ -926,7 +955,7 @@ def list_exports():
             "size_mb": file_path.stat().st_size / (1024 ** 2),
             "created_at": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(),
         })
-    
+
     return _ok(exports)
 
 
@@ -937,14 +966,14 @@ def download_export():
     filename = sanitize_filename(request.args.get("file", ""))
     if not filename:
         return _err("file parameter required", 400)
-    
+
     export_dir = _config().UPLOAD_FOLDER / "exports"
     file_path = export_dir / filename
-    
+
     # Security: ensure file is in export directory
     if not file_path.exists() or not str(file_path).startswith(str(export_dir)):
         return _err("File not found", 404)
-    
+
     try:
         return send_from_directory(str(export_dir), filename, as_attachment=True)
     except Exception as exc:
@@ -996,10 +1025,10 @@ def get_duplicates_by_hash(file_hash: str):
     """
     file_hash = sanitize_str(file_hash, 128)
     dup_group = DuplicateService.get_duplicates_by_hash(file_hash)
-    
+
     if not dup_group:
         return _err(f"No files found with hash: {file_hash}", 404)
-    
+
     return _ok(dup_group, message=f"Found {dup_group['total_copies']} copies of this file")
 
 
@@ -1011,12 +1040,12 @@ def get_duplicates_for_file(dataset_id: str):
     Shows original and all duplicate locations.
     """
     dup_group = DuplicateService.get_duplicates_for_file(dataset_id)
-    
+
     if "error" in dup_group:
         return _err(dup_group["error"], 404)
     if not dup_group:
         return _ok({"message": "No duplicates found for this file", "copies": 1})
-    
+
     return _ok(dup_group)
 
 
@@ -1027,10 +1056,10 @@ def find_duplicates_by_name():
     Search for files with the same name (potential duplicates).
     """
     file_name = sanitize_search_query(request.args.get("name", ""))
-    
+
     if not file_name:
         return _err("name parameter is required", 400)
-    
+
     duplicates = DuplicateService.find_duplicates_by_name(file_name)
     return _ok({
         "search_term": file_name,
@@ -1060,21 +1089,22 @@ def mark_for_deduplication():
     body = request.get_json(silent=True) or {}
     file_hash = sanitize_str(body.get("file_hash", ""), 128)
     action = sanitize_str(body.get("action", "convert_to_link"), 50)  # delete | archive | convert_to_link
-    
+
     if not file_hash:
         return _err("file_hash is required", 400)
-    
+
     valid_actions = ["delete", "archive", "convert_to_link"]
     if action not in valid_actions:
         return _err(f"Invalid action. Must be one of: {', '.join(valid_actions)}", 400)
-    
+
     dup_group = DuplicateService.get_duplicates_by_hash(file_hash)
     if not dup_group or len(dup_group.get("all_files", [])) <= 1:
         return _err("No duplicates found for this hash", 404)
-    
+
     # Log the deduplication action
     HistoryService.log(
         dataset_id=None,
+        user_id=g.get("current_user", {}).get("sub"),
         user_name=g.get("current_user", {}).get("username", "System"),
         file_name=f"Deduplication: {file_hash}",
         file_hash=file_hash,
@@ -1082,7 +1112,7 @@ def mark_for_deduplication():
         status="pending",
         notes=f"Action: {action}, Duplicates: {len(dup_group['duplicate_locations'])}, Storage saved: {dup_group['storage_saved_if_deduplicated']} bytes",
     )
-    
+
     return _ok({
         "marked": True,
         "file_hash": file_hash,
@@ -1104,20 +1134,21 @@ def scan_directory_for_duplicates():
     directory = sanitize_str(body.get("directory", ""), 512)
     recursive = body.get("recursive", True)
     extensions = body.get("extensions", None)
-    
+
     if not directory:
         return _err("directory is required", 400)
-    
+
     try:
         result = DuplicateService.scan_directory_for_duplicates(
             directory=directory,
             recursive=recursive,
             extensions=extensions
         )
-        
+
         # Log the scan
         HistoryService.log(
             dataset_id=None,
+            user_id=g.get("current_user", {}).get("sub"),
             user_name=g.get("current_user", {}).get("username", "System"),
             file_name=f"Directory scan: {directory}",
             file_hash="",
@@ -1125,7 +1156,7 @@ def scan_directory_for_duplicates():
             status="completed",
             notes=f"Scanned {result['scanned_files']} files, found {result['total_duplicates']} duplicate groups",
         )
-        
+
         return _ok(result)
     except Exception as e:
         return _err(f"Scan failed: {str(e)}", 500)
@@ -1141,19 +1172,20 @@ def search_duplicates_by_filename():
     body = request.get_json(silent=True) or {}
     filename = sanitize_str(body.get("filename", ""), 256)
     search_paths = body.get("search_paths", None)
-    
+
     if not filename:
         return _err("filename is required", 400)
-    
+
     try:
         result = DuplicateService.search_duplicates_by_filename(
             filename=filename,
             search_paths=search_paths
         )
-        
+
         # Log the search
         HistoryService.log(
             dataset_id=None,
+            user_id=g.get("current_user", {}).get("sub"),
             user_name=g.get("current_user", {}).get("username", "System"),
             file_name=f"Search duplicates: {filename}",
             file_hash="",
@@ -1161,7 +1193,7 @@ def search_duplicates_by_filename():
             status="completed",
             notes=f"Found {result['total_files']} files, {result['total_duplicates']} duplicates in {len(result['duplicate_groups'])} groups",
         )
-        
+
         return _ok(result)
     except Exception as e:
         return _err(f"Search failed: {str(e)}", 500)
@@ -1177,10 +1209,10 @@ def get_my_profile():
     """Get current user's complete profile with role metadata."""
     uid = g.current_user.get("sub")
     profile_data = ProfileService.get_user_profile_data(uid)
-    
+
     if not profile_data:
         return _err("Profile not found.", 404)
-    
+
     return _ok(profile_data)
 
 
@@ -1228,23 +1260,23 @@ def update_my_profile():
     """Update current user's profile (full_name, bio, preferences, etc.)."""
     uid = g.current_user.get("sub")
     body = request.get_json(silent=True) or {}
-    
+
     # Allowed fields for user to update
     allowed_fields = [
-        "full_name", "bio", "avatar_url", "phone_number", "department", 
+        "full_name", "bio", "avatar_url", "phone_number", "department",
         "title", "timezone", "language", "theme", "notifications_enabled",
         "email_notifications", "preferences"
     ]
-    
+
     updates = {k: v for k, v in body.items() if k in allowed_fields and v is not None}
     if isinstance(updates.get("preferences"), dict):
         updates["preferences"].pop("two_factor_mobile_enabled", None)
         current_preferences = ProfileService.get_user_preferences(uid)
         updates["preferences"] = {**current_preferences, **updates["preferences"]}
-    
+
     if not updates:
         return _err("No valid fields to update.", 400)
-    
+
     try:
         updated_profile = ProfileService.update_user_profile(uid, **updates)
         return _ok(updated_profile, message="Profile updated successfully.")
@@ -1293,10 +1325,10 @@ def get_role_details(role: str):
     """Get detailed information about a specific role."""
     role = sanitize_str(role, 50).lower()
     role_info = ProfileService.get_role_profile(role)
-    
+
     if not role_info:
         return _err(f"Role '{role}' not found.", 404)
-    
+
     return _ok(role_info)
 
 
@@ -1307,7 +1339,7 @@ def get_all_users_profiles():
     """Get all user profiles (admin only)."""
     limit = min(int(request.args.get("limit", 100)), 500)
     offset = int(request.args.get("offset", 0))
-    
+
     profiles = ProfileService.get_all_profiles(limit, offset)
     return _ok({
         "profiles": profiles,
@@ -1324,7 +1356,7 @@ def get_users_by_role(role: str):
     """Get all users with a specific role (admin only)."""
     role = sanitize_str(role, 50).lower()
     limit = min(int(request.args.get("limit", 100)), 500)
-    
+
     profiles = ProfileService.get_profiles_by_role(role, limit)
     return _ok({
         "role": role,
@@ -1339,17 +1371,17 @@ def get_user_profile(user_id: str):
     """Get a specific user's profile."""
     user_id = sanitize_str(user_id, 128)
     profile_data = ProfileService.get_user_profile_data(user_id)
-    
+
     if not profile_data:
         return _err("User profile not found.", 404)
-    
+
     # Check if user is requesting their own profile or if requester is admin
     current_uid = g.current_user.get("sub")
     current_user_role = g.current_user.get("role")
-    
+
     if current_uid != user_id and current_user_role != "admin":
         return _err("You don't have permission to view this profile.", 403)
-    
+
     return _ok(profile_data)
 
 
@@ -1358,18 +1390,18 @@ def get_user_profile(user_id: str):
 def get_user_stats(user_id: str):
     """Get user statistics."""
     user_id = sanitize_str(user_id, 128)
-    
+
     # Check permission
     current_uid = g.current_user.get("sub")
     current_user_role = g.current_user.get("role")
-    
+
     if current_uid != user_id and current_user_role != "admin":
         return _err("You don't have permission to view these stats.", 403)
-    
+
     stats = ProfileService.get_user_stats(user_id)
     if not stats:
         return _err("User not found.", 404)
-    
+
     return _ok(stats)
 
 
@@ -1378,18 +1410,18 @@ def get_user_stats(user_id: str):
 def get_user_permissions(user_id: str):
     """Get user's permissions."""
     user_id = sanitize_str(user_id, 128)
-    
+
     # Check permission
     current_uid = g.current_user.get("sub")
     current_user_role = g.current_user.get("role")
-    
+
     if current_uid != user_id and current_user_role != "admin":
         return _err("You don't have permission to view these permissions.", 403)
-    
+
     permissions = ProfileService.get_user_permissions(user_id)
     if not permissions and user_id != current_uid:
         return _err("User not found.", 404)
-    
+
     return _ok({"user_id": user_id, "permissions": permissions})
 
 
@@ -1400,7 +1432,7 @@ def update_user_profile_admin(user_id: str):
     """Update a user's profile (admin only)."""
     user_id = sanitize_str(user_id, 128)
     body = request.get_json(silent=True) or {}
-    
+
     # Admin can update more fields
     allowed_fields = [
         "full_name", "bio", "avatar_url", "phone_number", "department",
@@ -1408,12 +1440,12 @@ def update_user_profile_admin(user_id: str):
         "email_notifications", "preferences", "is_verified", "profile_status",
         "permissions"
     ]
-    
+
     updates = {k: v for k, v in body.items() if k in allowed_fields and v is not None}
-    
+
     if not updates:
         return _err("No valid fields to update.", 400)
-    
+
     try:
         updated_profile = ProfileService.update_user_profile(user_id, **updates)
         if not updated_profile:
@@ -1429,7 +1461,7 @@ def update_user_profile_admin(user_id: str):
 def verify_user_profile(user_id: str):
     """Verify a user profile (admin only)."""
     user_id = sanitize_str(user_id, 128)
-    
+
     try:
         updated_profile = ProfileService.update_user_profile(user_id, is_verified=1)
         if not updated_profile:
@@ -1445,12 +1477,34 @@ def verify_user_profile(user_id: str):
 def suspend_user_profile(user_id: str):
     """Suspend a user profile (admin only)."""
     user_id = sanitize_str(user_id, 128)
-    
+    current_uid = g.current_user.get("sub")
+    if user_id == current_uid:
+        return _err("You cannot deactivate your own administrator account.", 400)
+
     try:
+        with get_db() as conn:
+            user = row_to_dict(conn.execute(
+                "SELECT id, role, is_active FROM users WHERE id = ?", (user_id,)
+            ).fetchone())
+            if not user:
+                return _err("User not found.", 404)
+
+            if user.get("role") in {"admin", "administrator"} and user.get("is_active"):
+                admin_count = conn.execute(
+                    "SELECT COUNT(*) FROM users WHERE role IN ('admin', 'administrator') AND is_active = 1"
+                ).fetchone()[0]
+                if admin_count <= 1:
+                    return _err("Cannot deactivate the last active administrator.", 400)
+
+            conn.execute(
+                "UPDATE users SET is_active = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
+                (user_id,),
+            )
+
         updated_profile = ProfileService.update_user_profile(user_id, profile_status="suspended")
         if not updated_profile:
             return _err("User not found.", 404)
-        return _ok(updated_profile, message="User profile suspended.")
+        return _ok(updated_profile, message="User deactivated. They cannot log in until reactivated.")
     except Exception as exc:
         return _err(f"Suspension failed: {exc}", 500)
 
@@ -1461,11 +1515,72 @@ def suspend_user_profile(user_id: str):
 def activate_user_profile(user_id: str):
     """Activate a suspended user profile (admin only)."""
     user_id = sanitize_str(user_id, 128)
-    
+
     try:
+        with get_db() as conn:
+            user = row_to_dict(conn.execute(
+                "SELECT id FROM users WHERE id = ?", (user_id,)
+            ).fetchone())
+            if not user:
+                return _err("User not found.", 404)
+            conn.execute(
+                "UPDATE users SET is_active = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
+                (user_id,),
+            )
+
         updated_profile = ProfileService.update_user_profile(user_id, profile_status="active")
         if not updated_profile:
             return _err("User not found.", 404)
-        return _ok(updated_profile, message="User profile activated.")
+        return _ok(updated_profile, message="User activated. They can log in now.")
     except Exception as exc:
         return _err(f"Activation failed: {exc}", 500)
+
+
+@profile_bp.post("/users/<user_id>/role")
+@require_auth
+@require_role("admin")
+def assign_user_role(user_id: str):
+    """Assign a role to a user (admin only)."""
+    user_id = sanitize_str(user_id, 128)
+    body = request.get_json(silent=True) or {}
+    new_role = sanitize_str(body.get("role", ""), 50).lower()
+
+    if new_role not in {"admin", "registered", "guest"}:
+        return _err("Invalid role. Must be one of: admin, registered, guest.", 400)
+
+    try:
+        with get_db() as conn:
+            # Check if user exists
+            user = row_to_dict(conn.execute(
+                "SELECT id, username, role FROM users WHERE id = ?", (user_id,)
+            ).fetchone())
+
+            if not user:
+                return _err("User not found.", 404)
+
+            # Prevent demoting the last admin
+            if user["role"] == "admin" and new_role != "admin":
+                admin_count = conn.execute(
+                    "SELECT COUNT(*) FROM users WHERE role IN ('admin', 'administrator') AND is_active = 1"
+                ).fetchone()[0]
+                if admin_count <= 1:
+                    return _err("Cannot demote the last remaining admin.", 400)
+
+            # Update the role
+            conn.execute(
+                "UPDATE users SET role = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
+                (new_role, user_id),
+            )
+
+        # Update user profile with role-derived permissions and preferences.
+        default_permissions = ProfileService.ROLE_PERMISSIONS[new_role]
+        default_preferences = ProfileService.get_role_profile(new_role)["default_preferences"]
+        ProfileService.update_user_profile(
+            user_id,
+            permissions=default_permissions,
+            preferences=default_preferences,
+        )
+
+        return _ok({"user_id": user_id, "new_role": new_role}, message=f"User role updated to {new_role}.")
+    except Exception as exc:
+        return _err(f"Role assignment failed: {exc}", 500)

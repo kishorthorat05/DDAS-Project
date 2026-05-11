@@ -172,20 +172,23 @@ def chat(
     Send a message to Gemini with conversation history.
     Falls back to a grounded local response when API access is unavailable.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     project_context = _build_chat_context(message, context)
 
     key = _get_api_key()
-    print(f"[CHAT] API Key available: {bool(key)}, length: {len(key) if key else 0}")
+    logger.debug(f"API Key available: {bool(key)}, length: {len(key) if key else 0}")
 
     if not key or len(key) < 20:
-        print("[CHAT] No API key available, using grounded fallback")
+        logger.warning("No API key available, using grounded fallback")
         return _grounded_fallback_chat(message, history, project_context)
 
     if not _configure_client():
-        print("[CHAT] Client config failed, using grounded fallback")
+        logger.warning("Client config failed, using grounded fallback")
         return _grounded_fallback_chat(message, history, project_context)
 
-    print(f"[CHAT] Attempting Gemini API call with model: {_get_model()}")
+    logger.debug(f"Attempting Gemini API call with model: {_get_model()}")
 
     system = _CHAT_SYSTEM
     if project_context:
