@@ -1264,7 +1264,6 @@ tr:hover td { background: rgba(255,255,255,.02); }
         </div>
         <div style="margin-left:auto;display:flex;gap:8px">
           <button class="btn btn-secondary btn-sm" onclick="loadProfilePage()">Refresh</button>
-          <button class="btn btn-secondary btn-sm" onclick="contactAdmin()">Contact Admin</button>
           <button class="btn btn-danger btn-sm" onclick="logout()">Logout</button>
         </div>
       </div>
@@ -1294,6 +1293,7 @@ let authToken = localStorage.getItem('ddas_token') || '';
 let currentUser = JSON.parse(localStorage.getItem('ddas_user') || 'null');
 let selectedFile = null;
 let chatSessionId = 'sess_' + Math.random().toString(36).slice(2);
+let activeChatIdentity = '';
 let searchDebounceTimer = null;
 let monitorRunning = true;
 let profilePreviewObjectUrl = '';
@@ -1311,9 +1311,153 @@ const I18N = {
     export: 'Export',
     profile: 'Profile',
     logout: 'Logout',
-    contactAdmin: 'Contact Admin',
     refresh: 'Refresh',
-    profileSubtitle: 'Account, security, permissions, settings, and activity',
+    overview: 'Overview',
+    data: 'Data',
+    tools: 'Tools',
+    notifications: 'Notifications',
+    monitorActive: 'Monitor Active',
+    monitorOffline: 'Monitor Offline',
+    monitorOn: 'Monitor ON',
+    monitorOff: 'Monitor OFF',
+    manualScan: 'Manual Scan',
+    dashboardSubtitle: 'System overview & real-time monitoring stats',
+    datasets: 'Datasets',
+    registeredInRepository: 'registered in repository',
+    duplicatesBlocked: 'Duplicates Blocked',
+    downloadAttemptsPrevented: 'download attempts prevented',
+    totalSize: 'Total Size',
+    dataUnderManagement: 'data under management',
+    unreadAlerts: 'Unread Alerts',
+    requireAttention: 'require attention',
+    recentScanActivity: 'Recent Scan Activity',
+    file: 'File',
+    hash: 'Hash',
+    size: 'Size',
+    status: 'Status',
+    time: 'Time',
+    noScanLogs: 'No scan logs yet. Run a manual scan to populate.',
+    uploadData: 'Upload Data',
+    uploadSubtitle: 'Upload local files with metadata filled from the selected file',
+    localFile: 'Local File',
+    dropFile: 'Drop file here',
+    clickBrowse: 'or click to browse',
+    fileTypes: 'CSV, JSON, Excel, images, PDF, ZIP...',
+    metadataOptional: 'Metadata (optional)',
+    yourName: 'Your Name',
+    spatialDomain: 'Spatial Domain',
+    period: 'Period',
+    description: 'Description',
+    uploadFile: 'Upload File',
+    datasetRepository: 'Dataset Repository',
+    repositorySubtitle: 'Browse and search all registered datasets',
+    searchRepository: 'Search by name, domain, period, description...',
+    search: 'Search',
+    allDatasets: 'All Datasets',
+    type: 'Type',
+    domain: 'Domain',
+    addedBy: 'Added By',
+    date: 'Date',
+    loading: 'Loading...',
+    alertsSubtitle: 'Duplicate detections and system notifications',
+    markAllRead: 'Mark All Read',
+    noAlertsYet: 'No alerts yet. The system will notify you of duplicates here.',
+    downloadHistory: 'Download History',
+    historySubtitle: 'All upload and scan events',
+    action: 'Action',
+    user: 'User',
+    noHistoryYet: 'No history yet.',
+    iasChatbot: 'IAS Chatbot',
+    poweredByGemini: 'Powered by Google Gemini',
+    checking: 'Checking...',
+    clearChat: 'Clear Chat',
+    chatPlaceholder: 'Ask about your data, files, or the system...',
+    analyticsInsights: 'Analytics & Insights',
+    analyticsSubtitle: 'Real-time system metrics and performance data',
+    exportBackup: 'Export & Backup',
+    exportSubtitle: 'Export scan results, duplicates, and dataset metadata as ZIP files',
+    exportOptions: 'Export Options',
+    exportScanResults: 'Export Scan Results',
+    exportAllDatasets: 'Export All Datasets',
+    cleanOldExports: 'Clean Old Exports',
+    availableExports: 'Available Exports',
+    noExportsYet: 'No exports yet. Create one to see it listed here.',
+    duplicateDetector: 'Duplicate Detector',
+    duplicatesSubtitle: 'Identify and manage duplicate files with their storage locations',
+    loadingDuplicateDetector: 'Loading duplicate detector...',
+    scanFilesFolders: 'Scan Files & Folders for Duplicates',
+    scanSubfolders: 'Scan subfolders',
+    scanDirectory: 'Scan Directory',
+    searchDuplicateFilesByName: 'Search for Duplicate Files by Name',
+    searchSystemDuplicates: 'Search System for Duplicates',
+    duplicateGroups: 'Duplicate Groups',
+    groupsFound: 'groups found',
+    duplicateFiles: 'Duplicate Files',
+    redundantCopies: 'redundant copies',
+    storageWasted: 'Storage Wasted',
+    canBeRecovered: 'can be recovered',
+    uniqueFiles: 'Unique Files',
+    noDuplicates: 'no duplicates',
+    clear: 'Clear',
+    folderPathPlaceholder: 'Enter folder path (e.g., C:\\Users\\Downloads or /home/user/documents)',
+    filenamePlaceholder: 'Enter filename (e.g., photo.jpg, document.pdf, or *.jpg)',
+    duplicateSearchPlaceholder: 'Search by filename or location...',
+    noDuplicatesFound: 'No duplicates found yet. Use the scanner above to find duplicates on your computer.',
+    profileSubtitle: 'Account, security, permissions, alerts, and activity',
+    userDetails: 'User Details',
+    fullName: 'Full Name',
+    phoneNumber: 'Phone Number',
+    profilePhotoUrl: 'Profile Photo URL',
+    email: 'Email',
+    role: 'Role',
+    saveDetails: 'Save Details',
+    securitySettings: 'Security Settings',
+    loginCount: 'Login Count',
+    lastLogin: 'Last Login',
+    activityInformation: 'Activity Information',
+    filesUploaded: 'Files Uploaded',
+    downloads: 'Downloads',
+    duplicateAlerts: 'Duplicate Alerts',
+    recentActivity: 'Recent Activity',
+    permissions: 'Permissions',
+    accessLevel: 'Access Level',
+    userRole: 'User Role',
+    reportsStatistics: 'Reports & Statistics',
+    duplicateDetectionCount: 'Duplicate Detection Count',
+    downloadStatistics: 'Download Statistics',
+    storageUsage: 'Storage Usage',
+    settings: 'Settings',
+    theme: 'Theme',
+    light: 'Light',
+    dark: 'Dark',
+    language: 'Language',
+    realTimeAlerts: 'Real-time alerts',
+    saveSettings: 'Save Settings',
+    administrator: 'Administrator',
+    registeredUser: 'Registered User',
+    fullSystemAccess: 'Full system access',
+    registeredUserAccess: 'Registered user access',
+    notSet: 'Not set',
+    notRecorded: 'Not recorded',
+    profileUnavailable: 'Profile is available for registered users and administrators.',
+    unableToLoadProfile: 'Unable to load profile.',
+    loadingProfile: 'Loading profile...',
+    username: 'Username',
+    password: 'Password',
+    emailOptional: 'Email (optional)',
+    signIn: 'Sign In ->',
+    createAccount: 'Create Account ->',
+    continueAsGuest: 'Continue as Guest',
+    guestNote: 'Guest access is read-only: dashboard, public repository, analytics, and duplicate summaries.',
+    roleNote: 'The first administrator can be created here. Later administrators must be assigned by an existing admin.',
+    registeredRoleOption: 'Registered User - upload, alerts, AI, export',
+    adminRoleOption: 'Administrator - full system access',
+    fillAllFields: 'Fill in all fields.',
+    loginFailed: 'Login failed.',
+    registrationFailed: 'Registration failed.',
+    creating: 'Creating...',
+    profileSaved: 'Profile saved.',
+    couldNotSaveProfile: 'Could not save profile.',
   },
   hi: {
     dashboard: 'डैशबोर्ड',
@@ -1348,6 +1492,126 @@ const I18N = {
     profileSubtitle: 'खाते, सुरक्षा, परवानग्या, सेटिंग्ज आणि गतिविधी',
   }
 };
+
+Object.assign(I18N.hi, {
+  overview: 'अवलोकन', data: 'डेटा', tools: 'टूल्स', notifications: 'सूचनाएं',
+  monitorActive: 'मॉनिटर सक्रिय', monitorOffline: 'मॉनिटर ऑफलाइन', monitorOn: 'मॉनिटर चालू', monitorOff: 'मॉनिटर बंद',
+  manualScan: 'मैनुअल स्कैन', dashboardSubtitle: 'सिस्टम अवलोकन और रियल-टाइम मॉनिटरिंग आंकड़े',
+  datasets: 'डेटासेट', registeredInRepository: 'रिपॉजिटरी में पंजीकृत', duplicatesBlocked: 'डुप्लिकेट रोके गए',
+  downloadAttemptsPrevented: 'डाउनलोड प्रयास रोके गए', totalSize: 'कुल आकार', dataUnderManagement: 'प्रबंधित डेटा',
+  unreadAlerts: 'अपठित अलर्ट', requireAttention: 'ध्यान आवश्यक', recentScanActivity: 'हाल की स्कैन गतिविधि',
+  file: 'फ़ाइल', hash: 'हैश', size: 'आकार', status: 'स्थिति', time: 'समय',
+  noScanLogs: 'अभी कोई स्कैन लॉग नहीं। मैनुअल स्कैन चलाएं।',
+  uploadData: 'डेटा अपलोड करें', uploadSubtitle: 'चुनी गई फ़ाइल से मेटाडेटा के साथ स्थानीय फ़ाइलें अपलोड करें',
+  localFile: 'स्थानीय फ़ाइल', dropFile: 'फ़ाइल यहां छोड़ें', clickBrowse: 'या ब्राउज़ करने के लिए क्लिक करें',
+  fileTypes: 'CSV, JSON, Excel, images, PDF, ZIP...', metadataOptional: 'मेटाडेटा (वैकल्पिक)',
+  yourName: 'आपका नाम', spatialDomain: 'स्थानिक डोमेन', period: 'अवधि', description: 'विवरण', uploadFile: 'फ़ाइल अपलोड करें',
+  datasetRepository: 'डेटासेट रिपॉजिटरी', repositorySubtitle: 'सभी पंजीकृत डेटासेट ब्राउज़ और खोजें',
+  searchRepository: 'नाम, डोमेन, अवधि, विवरण से खोजें...', search: 'खोजें', allDatasets: 'सभी डेटासेट',
+  type: 'प्रकार', domain: 'डोमेन', addedBy: 'जोड़ा गया', date: 'दिनांक', loading: 'लोड हो रहा है...',
+  alertsSubtitle: 'डुप्लिकेट पहचान और सिस्टम सूचनाएं', markAllRead: 'सभी पढ़ा हुआ करें',
+  noAlertsYet: 'अभी कोई अलर्ट नहीं। डुप्लिकेट मिलने पर सूचना मिलेगी।',
+  downloadHistory: 'डाउनलोड इतिहास', historySubtitle: 'सभी अपलोड और स्कैन इवेंट',
+  action: 'क्रिया', user: 'उपयोगकर्ता', noHistoryYet: 'अभी कोई इतिहास नहीं।',
+  iasChatbot: 'IAS चैटबॉट', poweredByGemini: 'Google Gemini द्वारा संचालित', checking: 'जांच हो रही है...',
+  clearChat: 'चैट साफ करें', chatPlaceholder: 'अपने डेटा, फ़ाइलों या सिस्टम के बारे में पूछें...',
+  analyticsInsights: 'एनालिटिक्स और इनसाइट्स', analyticsSubtitle: 'रियल-टाइम सिस्टम मेट्रिक्स और प्रदर्शन डेटा',
+  exportBackup: 'एक्सपोर्ट और बैकअप', exportSubtitle: 'स्कैन परिणाम, डुप्लिकेट और डेटासेट मेटाडेटा ZIP में एक्सपोर्ट करें',
+  exportOptions: 'एक्सपोर्ट विकल्प', exportScanResults: 'स्कैन परिणाम एक्सपोर्ट करें', exportAllDatasets: 'सभी डेटासेट एक्सपोर्ट करें',
+  cleanOldExports: 'पुराने एक्सपोर्ट साफ करें', availableExports: 'उपलब्ध एक्सपोर्ट', noExportsYet: 'अभी कोई एक्सपोर्ट नहीं। एक बनाएं।',
+  duplicateDetector: 'डुप्लिकेट डिटेक्टर', duplicatesSubtitle: 'डुप्लिकेट फ़ाइलों और उनके स्थानों की पहचान और प्रबंधन करें',
+  loadingDuplicateDetector: 'डुप्लिकेट डिटेक्टर लोड हो रहा है...',
+  scanFilesFolders: 'डुप्लिकेट के लिए फ़ाइलें और फ़ोल्डर स्कैन करें', scanSubfolders: 'सबफ़ोल्डर स्कैन करें',
+  scanDirectory: 'डायरेक्टरी स्कैन करें', searchDuplicateFilesByName: 'नाम से डुप्लिकेट फ़ाइलें खोजें',
+  searchSystemDuplicates: 'सिस्टम में डुप्लिकेट खोजें', duplicateGroups: 'डुप्लिकेट समूह', groupsFound: 'समूह मिले',
+  duplicateFiles: 'डुप्लिकेट फ़ाइलें', redundantCopies: 'अतिरिक्त कॉपी', storageWasted: 'व्यर्थ स्टोरेज',
+  canBeRecovered: 'रिकवर किया जा सकता है', uniqueFiles: 'अद्वितीय फ़ाइलें', noDuplicates: 'कोई डुप्लिकेट नहीं',
+  clear: 'साफ करें', folderPathPlaceholder: 'फ़ोल्डर पथ दर्ज करें',
+  filenamePlaceholder: 'फ़ाइल नाम दर्ज करें (जैसे photo.jpg या *.jpg)',
+  duplicateSearchPlaceholder: 'फ़ाइल नाम या स्थान से खोजें...',
+  noDuplicatesFound: 'अभी कोई डुप्लिकेट नहीं मिला। ऊपर स्कैनर का उपयोग करें।',
+  profileSubtitle: 'खाता, सुरक्षा, अनुमतियां, अलर्ट और गतिविधि',
+  userDetails: 'उपयोगकर्ता विवरण', fullName: 'पूरा नाम', phoneNumber: 'फ़ोन नंबर', profilePhotoUrl: 'प्रोफ़ाइल फोटो URL',
+  email: 'ईमेल', role: 'भूमिका', saveDetails: 'विवरण सहेजें', securitySettings: 'सुरक्षा सेटिंग्स',
+  loginCount: 'लॉगिन संख्या', lastLogin: 'अंतिम लॉगिन', activityInformation: 'गतिविधि जानकारी',
+  filesUploaded: 'अपलोड की गई फ़ाइलें', downloads: 'डाउनलोड', duplicateAlerts: 'डुप्लिकेट अलर्ट', recentActivity: 'हाल की गतिविधि',
+  permissions: 'अनुमतियां', accessLevel: 'एक्सेस स्तर', userRole: 'उपयोगकर्ता भूमिका',
+  reportsStatistics: 'रिपोर्ट और आंकड़े', duplicateDetectionCount: 'डुप्लिकेट पहचान संख्या',
+  downloadStatistics: 'डाउनलोड आंकड़े', storageUsage: 'स्टोरेज उपयोग', settings: 'सेटिंग्स',
+  theme: 'थीम', light: 'लाइट', dark: 'डार्क', language: 'भाषा', realTimeAlerts: 'रियल-टाइम अलर्ट',
+  saveSettings: 'सेटिंग्स सहेजें', administrator: 'प्रशासक', registeredUser: 'पंजीकृत उपयोगकर्ता',
+  fullSystemAccess: 'पूर्ण सिस्टम एक्सेस', registeredUserAccess: 'पंजीकृत उपयोगकर्ता एक्सेस',
+  notSet: 'सेट नहीं', notRecorded: 'रिकॉर्ड नहीं', profileUnavailable: 'प्रोफ़ाइल पंजीकृत उपयोगकर्ताओं और प्रशासकों के लिए उपलब्ध है।',
+  unableToLoadProfile: 'प्रोफ़ाइल लोड नहीं हो सकी।', loadingProfile: 'प्रोफ़ाइल लोड हो रही है...',
+  username: 'उपयोगकर्ता नाम', password: 'पासवर्ड', emailOptional: 'ईमेल (वैकल्पिक)', signIn: 'साइन इन ->',
+  createAccount: 'खाता बनाएं ->', continueAsGuest: 'अतिथि के रूप में जारी रखें',
+  guestNote: 'अतिथि एक्सेस केवल पढ़ने के लिए है: डैशबोर्ड, सार्वजनिक रिपॉजिटरी, एनालिटिक्स और डुप्लिकेट सारांश।',
+  roleNote: 'पहला प्रशासक यहां बनाया जा सकता है। बाद के प्रशासक मौजूदा प्रशासक द्वारा असाइन होंगे।',
+  registeredRoleOption: 'पंजीकृत उपयोगकर्ता - अपलोड, अलर्ट, AI, एक्सपोर्ट',
+  adminRoleOption: 'प्रशासक - पूर्ण सिस्टम एक्सेस',
+  fillAllFields: 'सभी फ़ील्ड भरें।', loginFailed: 'लॉगिन विफल।', registrationFailed: 'पंजीकरण विफल।',
+  creating: 'बन रहा है...', profileSaved: 'प्रोफ़ाइल सहेजी गई।', couldNotSaveProfile: 'प्रोफ़ाइल सहेजी नहीं जा सकी।'
+});
+
+Object.assign(I18N.mr, {
+  overview: 'आढावा', data: 'डेटा', tools: 'साधने', notifications: 'सूचना',
+  monitorActive: 'मॉनिटर सक्रिय', monitorOffline: 'मॉनिटर ऑफलाइन', monitorOn: 'मॉनिटर चालू', monitorOff: 'मॉनिटर बंद',
+  manualScan: 'मॅन्युअल स्कॅन', dashboardSubtitle: 'सिस्टम आढावा आणि रिअल-टाइम मॉनिटरिंग आकडे',
+  datasets: 'डेटासेट', registeredInRepository: 'रिपॉझिटरीमध्ये नोंदलेले', duplicatesBlocked: 'डुप्लिकेट रोखले',
+  downloadAttemptsPrevented: 'डाउनलोड प्रयत्न रोखले', totalSize: 'एकूण आकार', dataUnderManagement: 'व्यवस्थापनातील डेटा',
+  unreadAlerts: 'न वाचलेले अलर्ट', requireAttention: 'लक्ष आवश्यक', recentScanActivity: 'अलीकडील स्कॅन क्रियाकलाप',
+  file: 'फाइल', hash: 'हॅश', size: 'आकार', status: 'स्थिती', time: 'वेळ',
+  noScanLogs: 'अजून स्कॅन लॉग नाहीत. मॅन्युअल स्कॅन चालवा.',
+  uploadData: 'डेटा अपलोड करा', uploadSubtitle: 'निवडलेल्या फाइलमधील मेटाडेटासह स्थानिक फाइल अपलोड करा',
+  localFile: 'स्थानिक फाइल', dropFile: 'फाइल येथे सोडा', clickBrowse: 'किंवा ब्राउझ करण्यासाठी क्लिक करा',
+  fileTypes: 'CSV, JSON, Excel, images, PDF, ZIP...', metadataOptional: 'मेटाडेटा (पर्यायी)',
+  yourName: 'तुमचे नाव', spatialDomain: 'स्थानिक डोमेन', period: 'कालावधी', description: 'वर्णन', uploadFile: 'फाइल अपलोड करा',
+  datasetRepository: 'डेटासेट रिपॉझिटरी', repositorySubtitle: 'सर्व नोंदलेले डेटासेट ब्राउझ आणि शोधा',
+  searchRepository: 'नाव, डोमेन, कालावधी, वर्णनाने शोधा...', search: 'शोधा', allDatasets: 'सर्व डेटासेट',
+  type: 'प्रकार', domain: 'डोमेन', addedBy: 'जोडले', date: 'दिनांक', loading: 'लोड होत आहे...',
+  alertsSubtitle: 'डुप्लिकेट शोध आणि सिस्टम सूचना', markAllRead: 'सर्व वाचले म्हणून चिन्हांकित करा',
+  noAlertsYet: 'अजून अलर्ट नाहीत. डुप्लिकेट आढळल्यास सूचना मिळेल.',
+  downloadHistory: 'डाउनलोड इतिहास', historySubtitle: 'सर्व अपलोड आणि स्कॅन इव्हेंट',
+  action: 'क्रिया', user: 'वापरकर्ता', noHistoryYet: 'अजून इतिहास नाही.',
+  iasChatbot: 'IAS चॅटबॉट', poweredByGemini: 'Google Gemini द्वारे चालित', checking: 'तपासत आहे...',
+  clearChat: 'चॅट साफ करा', chatPlaceholder: 'तुमचा डेटा, फाइल्स किंवा सिस्टमबद्दल विचारा...',
+  analyticsInsights: 'Analytics आणि Insights', analyticsSubtitle: 'रिअल-टाइम सिस्टम मेट्रिक्स आणि कार्यक्षमता डेटा',
+  exportBackup: 'एक्सपोर्ट आणि बॅकअप', exportSubtitle: 'स्कॅन परिणाम, डुप्लिकेट आणि डेटासेट मेटाडेटा ZIP म्हणून एक्सपोर्ट करा',
+  exportOptions: 'एक्सपोर्ट पर्याय', exportScanResults: 'स्कॅन परिणाम एक्सपोर्ट करा', exportAllDatasets: 'सर्व डेटासेट एक्सपोर्ट करा',
+  cleanOldExports: 'जुने एक्सपोर्ट साफ करा', availableExports: 'उपलब्ध एक्सपोर्ट', noExportsYet: 'अजून एक्सपोर्ट नाहीत. एक तयार करा.',
+  duplicateDetector: 'डुप्लिकेट डिटेक्टर', duplicatesSubtitle: 'डुप्लिकेट फाइल्स आणि त्यांची ठिकाणे ओळखा आणि व्यवस्थापित करा',
+  loadingDuplicateDetector: 'डुप्लिकेट डिटेक्टर लोड होत आहे...',
+  scanFilesFolders: 'डुप्लिकेटसाठी फाइल्स आणि फोल्डर स्कॅन करा', scanSubfolders: 'सबफोल्डर स्कॅन करा',
+  scanDirectory: 'डायरेक्टरी स्कॅन करा', searchDuplicateFilesByName: 'नावाने डुप्लिकेट फाइल्स शोधा',
+  searchSystemDuplicates: 'सिस्टममध्ये डुप्लिकेट शोधा', duplicateGroups: 'डुप्लिकेट गट', groupsFound: 'गट सापडले',
+  duplicateFiles: 'डुप्लिकेट फाइल्स', redundantCopies: 'अतिरिक्त प्रती', storageWasted: 'वाया गेलेले स्टोरेज',
+  canBeRecovered: 'पुनर्प्राप्त होऊ शकते', uniqueFiles: 'अद्वितीय फाइल्स', noDuplicates: 'डुप्लिकेट नाहीत',
+  clear: 'साफ करा', folderPathPlaceholder: 'फोल्डर पथ प्रविष्ट करा',
+  filenamePlaceholder: 'फाइल नाव प्रविष्ट करा (उदा. photo.jpg किंवा *.jpg)',
+  duplicateSearchPlaceholder: 'फाइल नाव किंवा स्थानाने शोधा...',
+  noDuplicatesFound: 'अजून डुप्लिकेट सापडले नाहीत. वरचा स्कॅनर वापरा.',
+  profileSubtitle: 'खाते, सुरक्षा, परवानग्या, अलर्ट आणि क्रियाकलाप',
+  userDetails: 'वापरकर्ता तपशील', fullName: 'पूर्ण नाव', phoneNumber: 'फोन नंबर', profilePhotoUrl: 'प्रोफाइल फोटो URL',
+  email: 'ईमेल', role: 'भूमिका', saveDetails: 'तपशील साठवा', securitySettings: 'सुरक्षा सेटिंग्स',
+  loginCount: 'लॉगिन संख्या', lastLogin: 'शेवटचा लॉगिन', activityInformation: 'क्रियाकलाप माहिती',
+  filesUploaded: 'अपलोड केलेल्या फाइल्स', downloads: 'डाउनलोड', duplicateAlerts: 'डुप्लिकेट अलर्ट', recentActivity: 'अलीकडील क्रियाकलाप',
+  permissions: 'परवानग्या', accessLevel: 'प्रवेश स्तर', userRole: 'वापरकर्ता भूमिका',
+  reportsStatistics: 'रिपोर्ट आणि आकडेवारी', duplicateDetectionCount: 'डुप्लिकेट शोध संख्या',
+  downloadStatistics: 'डाउनलोड आकडेवारी', storageUsage: 'स्टोरेज वापर', settings: 'सेटिंग्स',
+  theme: 'थीम', light: 'लाइट', dark: 'डार्क', language: 'भाषा', realTimeAlerts: 'रिअल-टाइम अलर्ट',
+  saveSettings: 'सेटिंग्स साठवा', administrator: 'प्रशासक', registeredUser: 'नोंदणीकृत वापरकर्ता',
+  fullSystemAccess: 'पूर्ण सिस्टम प्रवेश', registeredUserAccess: 'नोंदणीकृत वापरकर्ता प्रवेश',
+  notSet: 'सेट केलेले नाही', notRecorded: 'नोंद नाही', profileUnavailable: 'प्रोफाइल नोंदणीकृत वापरकर्ते आणि प्रशासकांसाठी उपलब्ध आहे.',
+  unableToLoadProfile: 'प्रोफाइल लोड करू शकलो नाही.', loadingProfile: 'प्रोफाइल लोड होत आहे...',
+  username: 'वापरकर्ता नाव', password: 'पासवर्ड', emailOptional: 'ईमेल (पर्यायी)', signIn: 'साइन इन ->',
+  createAccount: 'खाते तयार करा ->', continueAsGuest: 'अतिथी म्हणून पुढे जा',
+  guestNote: 'अतिथी प्रवेश फक्त वाचनासाठी आहे: डॅशबोर्ड, सार्वजनिक रिपॉझिटरी, analytics आणि डुप्लिकेट सारांश.',
+  roleNote: 'पहिला प्रशासक येथे तयार करता येतो. पुढील प्रशासक विद्यमान प्रशासकाने असाइन करावेत.',
+  registeredRoleOption: 'नोंदणीकृत वापरकर्ता - अपलोड, अलर्ट, AI, एक्सपोर्ट',
+  adminRoleOption: 'प्रशासक - पूर्ण सिस्टम प्रवेश',
+  fillAllFields: 'सर्व फील्ड भरा.', loginFailed: 'लॉगिन अयशस्वी.', registrationFailed: 'नोंदणी अयशस्वी.',
+  creating: 'तयार करत आहे...', profileSaved: 'प्रोफाइल साठवले.', couldNotSaveProfile: 'प्रोफाइल साठवता आले नाही.'
+});
 
 // ═════════════════════════════════════════════════════════════
 // ROLE-BASED ACCESS CONTROL
@@ -1499,6 +1763,34 @@ function applyUserPreferences(user = currentUser) {
   applyLanguage(language);
 }
 
+function tr(key, language = localStorage.getItem('ddas_language') || 'en') {
+  return I18N[language]?.[key] || I18N.en[key] || key;
+}
+
+function setText(selector, value) {
+  const el = document.querySelector(selector);
+  if (el) el.textContent = value;
+}
+
+function setPlaceholder(selector, value) {
+  const el = document.querySelector(selector);
+  if (el) el.placeholder = value;
+}
+
+function setFieldLabel(fieldSelector, value) {
+  const field = document.querySelector(fieldSelector);
+  const label = field?.closest('.form-group')?.querySelector('.form-label');
+  if (label) label.textContent = value;
+}
+
+function setButtonLabel(selector, value) {
+  const el = document.querySelector(selector);
+  if (!el) return;
+  const textNode = Array.from(el.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+  if (textNode) textNode.textContent = ` ${value}`;
+  else el.append(document.createTextNode(value));
+}
+
 function applyLanguage(language) {
   const t = I18N[language] || I18N.en;
   const labels = {
@@ -1521,10 +1813,114 @@ function applyLanguage(language) {
     if (textNode) textNode.textContent = ` ${label}`;
   });
 
-  const profileTitle = document.querySelector('#page-profile .page-title');
-  const profileSubtitle = document.querySelector('#page-profile .page-subtitle');
-  if (profileTitle) profileTitle.textContent = t.profile;
-  if (profileSubtitle) profileSubtitle.textContent = t.profileSubtitle;
+  document.querySelectorAll('.nav-section').forEach((section, index) => {
+    const keys = ['overview', 'data', 'tools'];
+    if (keys[index]) section.textContent = t[keys[index]] || I18N.en[keys[index]];
+  });
+
+  const textTargets = {
+    '#monitor-status-text': 'monitorActive',
+    '#page-dashboard .page-title': 'dashboard',
+    '#page-dashboard .page-subtitle': 'dashboardSubtitle',
+    '#page-dashboard .stat-card:nth-child(1) .stat-label': 'datasets',
+    '#page-dashboard .stat-card:nth-child(1) .stat-sub': 'registeredInRepository',
+    '#page-dashboard .stat-card:nth-child(2) .stat-label': 'duplicatesBlocked',
+    '#page-dashboard .stat-card:nth-child(2) .stat-sub': 'downloadAttemptsPrevented',
+    '#page-dashboard .stat-card:nth-child(3) .stat-label': 'totalSize',
+    '#page-dashboard .stat-card:nth-child(3) .stat-sub': 'dataUnderManagement',
+    '#page-dashboard .stat-card:nth-child(4) .stat-label': 'unreadAlerts',
+    '#page-dashboard .stat-card:nth-child(4) .stat-sub': 'requireAttention',
+    '#page-dashboard .table-title': 'recentScanActivity',
+    '#page-upload .page-title': 'uploadData',
+    '#page-upload .page-subtitle': 'uploadSubtitle',
+    '#page-upload > div:nth-of-type(2) > div > div:first-child': 'localFile',
+    '#upload-zone .upload-text strong': 'dropFile',
+    '#page-upload > div:nth-of-type(3) > div:first-child': 'metadataOptional',
+    '#page-repository .page-title': 'datasetRepository',
+    '#page-repository .page-subtitle': 'repositorySubtitle',
+    '#page-repository .table-title': 'allDatasets',
+    '#page-alerts .page-title': 'alerts',
+    '#page-alerts .page-subtitle': 'alertsSubtitle',
+    '#page-history .page-title': 'downloadHistory',
+    '#page-history .page-subtitle': 'historySubtitle',
+    '#page-ai-chat .page-title': 'iasChatbot',
+    '#ai-model-subtitle': 'poweredByGemini',
+    '#page-analytics .page-title': 'analyticsInsights',
+    '#page-analytics .page-subtitle': 'analyticsSubtitle',
+    '#page-export .page-title': 'exportBackup',
+    '#page-export .page-subtitle': 'exportSubtitle',
+    '#page-export .card:nth-child(1) > div:first-child': 'exportOptions',
+    '#page-export .card:nth-child(2) > div:first-child': 'availableExports',
+    '#page-duplicates .page-title': 'duplicateDetector',
+    '#page-duplicates .page-subtitle': 'duplicatesSubtitle',
+    '#page-profile .page-title': 'profile',
+    '#page-profile .page-subtitle': 'profileSubtitle',
+  };
+  Object.entries(textTargets).forEach(([selector, key]) => setText(selector, t[key] || I18N.en[key]));
+  const uploadTextNode = Array.from(document.querySelector('#upload-zone .upload-text')?.childNodes || [])
+    .find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+  if (uploadTextNode) uploadTextNode.textContent = ` ${t.clickBrowse || I18N.en.clickBrowse}`;
+  if (!selectedFile) setText('#selected-file-name', t.fileTypes || I18N.en.fileTypes);
+  const aiBadge = document.getElementById('ai-status-badge');
+  if (aiBadge && !aiBadge.dataset.statusLoaded) aiBadge.textContent = t.checking || I18N.en.checking;
+
+  document.querySelectorAll('button[onclick="loadProfilePage()"], button[onclick="loadRepository()"], button[onclick="loadAlerts()"], button[onclick="loadHistory()"], button[onclick="loadAnalytics()"], button[onclick="loadAvailableExports()"]').forEach(btn => btn.textContent = t.refresh || I18N.en.refresh);
+  setButtonLabel('button[onclick="triggerScan()"]', t.manualScan || I18N.en.manualScan);
+  setButtonLabel('#upload-btn', t.uploadFile || I18N.en.uploadFile);
+  setText('button[onclick="doSearch()"]', t.search || I18N.en.search);
+  setText('button[onclick="markAllRead()"]', t.markAllRead || I18N.en.markAllRead);
+  setText('button[onclick="clearChat()"]', t.clearChat || I18N.en.clearChat);
+  setButtonLabel('button[onclick="exportScanResults()"]', t.exportScanResults || I18N.en.exportScanResults);
+  setButtonLabel('button[onclick="exportAllDatasets()"]', t.exportAllDatasets || I18N.en.exportAllDatasets);
+  setButtonLabel('button[onclick="cleanupOldExports()"]', t.cleanOldExports || I18N.en.cleanOldExports);
+  setButtonLabel('button[onclick="loadDuplicateDetector()"]', t.refresh || I18N.en.refresh);
+  setText('button[onclick="logout()"]:not(.btn-icon)', t.logout || I18N.en.logout);
+
+  setPlaceholder('#repo-search', t.searchRepository || I18N.en.searchRepository);
+  setPlaceholder('#chat-input', t.chatPlaceholder || I18N.en.chatPlaceholder);
+  setPlaceholder('#login-username', 'your_username');
+  setPlaceholder('#reg-full-name', t.fullName || I18N.en.fullName);
+
+  setFieldLabel('#login-username', t.username || I18N.en.username);
+  setFieldLabel('#login-password', t.password || I18N.en.password);
+  setFieldLabel('#reg-full-name', t.fullName || I18N.en.fullName);
+  setFieldLabel('#reg-username', t.username || I18N.en.username);
+  setFieldLabel('#reg-email', t.emailOptional || I18N.en.emailOptional);
+  setFieldLabel('#reg-password', t.password || I18N.en.password);
+  setFieldLabel('#reg-role', t.role || I18N.en.role);
+  setFieldLabel('#meta-user', t.yourName || I18N.en.yourName);
+  setFieldLabel('#meta-domain', t.spatialDomain || I18N.en.spatialDomain);
+  setFieldLabel('#meta-period', t.period || I18N.en.period);
+  setFieldLabel('#meta-desc', t.description || I18N.en.description);
+
+  setText('button[onclick="doLogin()"]', t.signIn || I18N.en.signIn);
+  setText('button[onclick="doRegister()"]', t.createAccount || I18N.en.createAccount);
+  document.querySelectorAll('.auth-guest-button').forEach(btn => btn.textContent = t.continueAsGuest || I18N.en.continueAsGuest);
+  const authNotes = document.querySelectorAll('.auth-role-note');
+  if (authNotes[0]) authNotes[0].textContent = t.guestNote || I18N.en.guestNote;
+  if (authNotes[1]) authNotes[1].textContent = t.roleNote || I18N.en.roleNote;
+
+  const tableHeaders = [
+    ['#scan-logs-table thead th:nth-child(1)', 'file'], ['#scan-logs-table thead th:nth-child(2)', 'hash'],
+    ['#scan-logs-table thead th:nth-child(3)', 'size'], ['#scan-logs-table thead th:nth-child(4)', 'status'],
+    ['#scan-logs-table thead th:nth-child(5)', 'time'],
+    ['#page-repository thead th:nth-child(1)', 'file'], ['#page-repository thead th:nth-child(2)', 'type'],
+    ['#page-repository thead th:nth-child(3)', 'size'], ['#page-repository thead th:nth-child(4)', 'domain'],
+    ['#page-repository thead th:nth-child(5)', 'period'], ['#page-repository thead th:nth-child(6)', 'addedBy'],
+    ['#page-repository thead th:nth-child(7)', 'date'],
+    ['#page-history thead th:nth-child(1)', 'file'], ['#page-history thead th:nth-child(2)', 'action'],
+    ['#page-history thead th:nth-child(3)', 'status'], ['#page-history thead th:nth-child(4)', 'user'],
+    ['#page-history thead th:nth-child(5)', 'IP'], ['#page-history thead th:nth-child(6)', 'time'],
+  ];
+  tableHeaders.forEach(([selector, key]) => setText(selector, t[key] || I18N.en[key] || key));
+
+  const optionRegistered = document.querySelector('#reg-role option[value="registered"]');
+  const optionAdmin = document.querySelector('#reg-role option[value="admin"]');
+  if (optionRegistered) optionRegistered.textContent = t.registeredRoleOption || I18N.en.registeredRoleOption;
+  if (optionAdmin) optionAdmin.textContent = t.adminRoleOption || I18N.en.adminRoleOption;
+
+  setMonitorUI(monitorRunning);
+  updateRoleBadge();
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -1560,7 +1956,7 @@ async function doLogin() {
   const u = document.getElementById('login-username').value.trim();
   const p = document.getElementById('login-password').value;
   document.getElementById('login-error').textContent = '';
-  if (!u || !p) { document.getElementById('login-error').textContent = 'Fill in all fields.'; return; }
+  if (!u || !p) { document.getElementById('login-error').textContent = tr('fillAllFields'); return; }
   const r = await api('/api/auth/login', { method: 'POST', json: { username: u, password: p } });
   if (r.success) {
     authToken = r.data.access_token;
@@ -1569,7 +1965,7 @@ async function doLogin() {
     localStorage.setItem('ddas_user', JSON.stringify(currentUser));
     showApp();
   } else {
-    document.getElementById('login-error').textContent = r.error || 'Login failed.';
+    document.getElementById('login-error').textContent = r.error || tr('loginFailed');
   }
 }
 
@@ -1580,13 +1976,13 @@ async function doRegister() {
   const p = document.getElementById('reg-password').value;
   const role = document.getElementById('reg-role').value;
   document.getElementById('reg-error').textContent = '';
-  if (!u || !p) { document.getElementById('reg-error').textContent = 'Fill in all fields.'; return; }
+  if (!u || !p) { document.getElementById('reg-error').textContent = tr('fillAllFields'); return; }
   const btn = event.target.closest('button');
-  btn.disabled = true; btn.innerHTML = '<span style="opacity:.6">Creating…</span>';
+  btn.disabled = true; btn.innerHTML = `<span style="opacity:.6">${esc(tr('creating'))}</span>`;
   
   api('/api/auth/register', { method: 'POST', json: { username: u, email: e, password: p, full_name: fullName, role } }).then(r => {
     btn.disabled = false;
-    btn.innerHTML = 'Create Account →';
+    btn.textContent = tr('createAccount');
     if (r.success) {
       authToken = r.data.access_token;
       currentUser = r.data.user;
@@ -1594,7 +1990,7 @@ async function doRegister() {
       localStorage.setItem('ddas_user', JSON.stringify(currentUser));
       showApp();
     } else {
-      document.getElementById('reg-error').textContent = r.error || 'Registration failed.';
+      document.getElementById('reg-error').textContent = r.error || tr('registrationFailed');
     }
   });
 }
@@ -1614,6 +2010,7 @@ async function skipAuth() {
 }
 
 function logout() {
+  resetChatSession({ force: true });
   authToken = ''; currentUser = null;
   localStorage.removeItem('ddas_token'); localStorage.removeItem('ddas_user');
   document.getElementById('auth-overlay').style.display = 'flex';
@@ -1626,6 +2023,7 @@ function showApp() {
   applyUserPreferences(currentUser || { profile: { theme: localStorage.getItem('ddas_theme') || 'dark', language: localStorage.getItem('ddas_language') || 'en' } });
   saveOriginalDisplayValues();
   setVisibilityByRole();
+  resetChatSession();
   if (!document.querySelector('.page.active')) navigate('dashboard');
   loadDashboard();
   loadAlertCount();
@@ -1687,8 +2085,13 @@ async function loadDashboard() {
 }
 
 async function loadScanLogs() {
-  const r = await api('/api/scan-logs?limit=30');
   const tbody = document.getElementById('scan-logs-body');
+  tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p>Loading scan logs...</p></div></td></tr>';
+  const r = await api('/api/scan-logs?limit=30');
+  if (!r.success) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>${esc(r.error || 'Failed to load scan logs.')}</p></div></td></tr>`;
+    return;
+  }
   if (!r.success || !r.data?.length) {
     tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p>No scan logs yet.</p></div></td></tr>';
     return;
@@ -1815,11 +2218,13 @@ function showUploadResult(r) {
 // ═════════════════════════════════════════════════════════════
 // REPOSITORY
 // ═════════════════════════════════════════════════════════════
-async function loadRepository(query = '') {
+async function loadRepository(query = null) {
+  if (query === null) query = document.getElementById('repo-search')?.value?.trim() || '';
   const url = query ? `/api/datasets/search?q=${encodeURIComponent(query)}` : '/api/datasets';
-  const r = await api(url);
   const tbody = document.getElementById('repo-body');
   const count = document.getElementById('repo-count');
+  tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p>Loading...</p></div></td></tr>';
+  const r = await api(url);
   if (!r.success) { tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>Failed to load.</p></div></td></tr>`; return; }
   const list = Array.isArray(r.data) ? r.data : [];
   count.textContent = `${list.length} dataset${list.length !== 1 ? 's' : ''}`;
@@ -1851,8 +2256,13 @@ function doSearch() {
 // ALERTS
 // ═════════════════════════════════════════════════════════════
 async function loadAlerts() {
-  const r = await api('/api/alerts');
   const el = document.getElementById('alerts-list');
+  el.innerHTML = '<div class="empty-state"><p>Loading alerts...</p></div>';
+  const r = await api('/api/alerts');
+  if (!r.success) {
+    el.innerHTML = `<div class="empty-state"><p>${esc(r.error || 'Failed to load alerts.')}</p></div>`;
+    return;
+  }
   if (!r.success || !r.data?.alerts?.length) {
     el.innerHTML = '<div class="empty-state"><svg width="48" height="48" fill="none" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="1.5"/></svg><p>No alerts. All clear!</p></div>';
     updateBadgeCount(0); return;
@@ -1907,8 +2317,13 @@ function updateBadgeCount(n) {
 // HISTORY
 // ═════════════════════════════════════════════════════════════
 async function loadHistory() {
-  const r = await api('/api/history?limit=100');
   const tbody = document.getElementById('history-body');
+  tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>Loading history...</p></div></td></tr>';
+  const r = await api('/api/history?limit=100');
+  if (!r.success) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>${esc(r.error || 'Failed to load history.')}</p></div></td></tr>`;
+    return;
+  }
   if (!r.success || !r.data?.length) {
     tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>No history yet.</p></div></td></tr>'; return;
   }
@@ -1949,9 +2364,10 @@ function setMonitorUI(running) {
   const text = document.getElementById('monitor-status-text');
   const btnText = document.getElementById('monitor-btn-text');
   const btn = document.getElementById('monitor-toggle-btn');
+  if (!dot || !text || !btnText || !btn) return;
   dot.classList.toggle('offline', !running);
-  text.textContent = running ? 'Monitor Active' : 'Monitor Offline';
-  btnText.textContent = running ? 'Monitor ON' : 'Monitor OFF';
+  text.textContent = running ? tr('monitorActive') : tr('monitorOffline');
+  btnText.textContent = running ? tr('monitorOn') : tr('monitorOff');
   btn.classList.toggle('active', running);
 }
 
@@ -1964,9 +2380,11 @@ async function checkAIStatus() {
   const sub = document.getElementById('ai-model-subtitle');
   if (r.success) {
     if (r.data.api_configured) {
+      badge.dataset.statusLoaded = 'true';
       badge.className = 'badge badge-success'; badge.textContent = r.data.model;
       sub.textContent = `Powered by ${r.data.provider} · ${r.data.model}`;
     } else {
+      badge.dataset.statusLoaded = 'true';
       badge.className = 'badge badge-warning'; badge.textContent = 'Demo mode';
       sub.textContent = 'Set GOOGLE_API_KEY for full AI responses';
     }
@@ -2004,6 +2422,25 @@ function chatKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 }
 
+function getChatIdentity() {
+  if (!authToken || !currentUser) return 'guest';
+  return `${currentUser.id || currentUser.sub || currentUser.username || 'user'}:${currentUser.role || 'registered'}`;
+}
+
+function resetChatSession({ force = false } = {}) {
+  const identity = getChatIdentity();
+  if (!force && activeChatIdentity === identity) return;
+  activeChatIdentity = identity;
+  chatSessionId = 'sess_' + Math.random().toString(36).slice(2);
+  const msgs = document.getElementById('chat-messages');
+  if (msgs) msgs.innerHTML = '';
+  const input = document.getElementById('chat-input');
+  if (input) {
+    input.value = '';
+    autoResize(input);
+  }
+}
+
 function appendChatBubble(text, role) {
   const el = document.createElement('div');
   el.className = `chat-bubble ${role}`;
@@ -2023,9 +2460,9 @@ function appendTyping() {
 
 async function clearChat() {
   await api('/api/ai/chat/clear', { method: 'POST', json: { session_id: chatSessionId } });
-  chatSessionId = 'sess_' + Math.random().toString(36).slice(2);
+  resetChatSession({ force: true });
   const msgs = document.getElementById('chat-messages');
-  msgs.innerHTML = '<div class="chat-bubble assistant">Chat cleared. How can I help?</div>';
+  if (msgs) msgs.innerHTML = '<div class="chat-bubble assistant">Chat cleared. How can I help?</div>';
 }
 
 function autoResize(el) {
@@ -2037,10 +2474,14 @@ function autoResize(el) {
 // ANALYTICS
 // ═════════════════════════════════════════════════════════════
 async function loadAnalytics() {
-  const r = await api('/api/analytics/dashboard');
-  if (!r.success) return;
-  const d = r.data;
   const container = document.getElementById('analytics-container');
+  container.innerHTML = '<div class="empty-state"><p>Loading analytics...</p></div>';
+  const r = await api('/api/analytics/dashboard');
+  if (!r.success) {
+    container.innerHTML = `<div class="empty-state"><p>${esc(r.error || 'Failed to load analytics.')}</p></div>`;
+    return;
+  }
+  const d = r.data;
   container.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px">
       <div class="stat-card">
@@ -2055,12 +2496,12 @@ async function loadAnalytics() {
       </div>
       <div class="stat-card">
         <div class="stat-label">Total Storage</div>
-        <div class="stat-value" style="color:var(--success)">${(d.total_storage_gb || 0).toFixed(1)} GB</div>
+        <div class="stat-value" style="color:var(--success)">${fmtBytes(d.total_storage_bytes || 0)}</div>
         <div class="stat-sub">Data under management</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Bandwidth Saved</div>
-        <div class="stat-value" style="color:var(--accent)">${(d.bandwidth_saved_gb || 0).toFixed(1)} GB</div>
+        <div class="stat-value" style="color:var(--accent)">${fmtBytes(d.bandwidth_saved_bytes || 0)}</div>
         <div class="stat-sub">${d.storage_efficiency?.toFixed(1) || 0}% efficiency</div>
       </div>
       <div class="stat-card">
@@ -2084,10 +2525,13 @@ async function loadAnalytics() {
 // PROFILE
 // ═════════════════════════════════════════════════════════════
 async function loadProfilePage() {
+  const language = localStorage.getItem('ddas_language') || 'en';
+  const container = document.getElementById('profile-container');
   if (isGuest()) {
-    document.getElementById('profile-container').innerHTML = '<div class="empty-state"><p>Profile is available for registered users and administrators.</p></div>';
+    container.innerHTML = `<div class="empty-state"><p>${esc(tr('profileUnavailable', language))}</p></div>`;
     return;
   }
+  container.innerHTML = `<div class="empty-state"><p>${esc(tr('loadingProfile', language))}</p></div>`;
 
   const [profileRes, historyRes, alertsRes, analyticsRes] = await Promise.all([
     api('/api/profile/me'),
@@ -2096,9 +2540,8 @@ async function loadProfilePage() {
     api('/api/analytics/dashboard')
   ]);
 
-  const container = document.getElementById('profile-container');
   if (!profileRes.success) {
-    container.innerHTML = `<div class="empty-state"><p>${esc(profileRes.error || 'Unable to load profile.')}</p></div>`;
+    container.innerHTML = `<div class="empty-state"><p>${esc(profileRes.error || tr('unableToLoadProfile', language))}</p></div>`;
     return;
   }
 
@@ -2116,79 +2559,79 @@ async function loadProfilePage() {
   container.innerHTML = `
     <div class="profile-grid">
       <div class="profile-card profile-card-wide">
-        <div class="profile-card-title">User Details</div>
+        <div class="profile-card-title">${esc(tr('userDetails', language))}</div>
         <div class="profile-header">
           <div class="profile-avatar ${avatarSrc ? 'is-clickable' : ''}" data-initials="${esc(initials)}"${avatarAttrs}>${avatarSrc ? `<img src="${esc(avatarSrc)}" alt="Profile image" onerror="this.parentElement.textContent=this.parentElement.dataset.initials;this.parentElement.classList.remove('is-clickable')">` : esc(initials)}</div>
           <div style="min-width:0">
             <div style="font-size:18px;font-weight:600">${esc(profile.full_name || user.username || 'User')}</div>
-            <div style="color:var(--text-secondary);font-size:13px">${esc(user.email || 'No email added')}</div>
+            <div style="color:var(--text-secondary);font-size:13px">${esc(user.email || tr('notSet', language))}</div>
             <span class="badge badge-info" style="margin-top:8px">${roleLabel(user.role)}</span>
           </div>
         </div>
         <div class="profile-form-grid">
           <div class="form-group">
-            <label class="form-label">Name</label>
+            <label class="form-label">${esc(tr('fullName', language))}</label>
             <input class="form-input" id="profile-name" value="${esc(profile.full_name || '')}">
           </div>
           <div class="form-group">
-            <label class="form-label">Phone Number</label>
+            <label class="form-label">${esc(tr('phoneNumber', language))}</label>
             <input class="form-input" id="profile-phone" value="${esc(profile.phone_number || '')}" placeholder="+91 98765 43210">
           </div>
           <div class="form-group">
-            <label class="form-label">Profile Photo URL</label>
+            <label class="form-label">${esc(tr('profilePhotoUrl', language))}</label>
             <div class="profile-avatar-field">
               <input class="form-input" id="profile-avatar" value="${esc(profile.avatar_url || '')}" placeholder="https://...">
               <input class="profile-avatar-file" id="profile-avatar-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" onchange="previewProfileAvatar(this)">
             </div>
           </div>
         </div>
-        <div class="profile-kv"><span>Email</span><strong>${esc(user.email || 'Not set')}</strong></div>
-        <div class="profile-kv"><span>Role</span><strong>${roleLabel(user.role)}</strong></div>
+        <div class="profile-kv"><span>${esc(tr('email', language))}</span><strong>${esc(user.email || tr('notSet', language))}</strong></div>
+        <div class="profile-kv"><span>${esc(tr('role', language))}</span><strong>${roleLabel(user.role)}</strong></div>
         <div class="profile-actions">
-          <button class="btn btn-primary btn-sm" onclick="saveProfileSettings()">Save Details</button>
+          <button class="btn btn-primary btn-sm" onclick="saveProfileSettings()">${esc(tr('saveDetails', language))}</button>
         </div>
       </div>
 
       <div class="profile-card profile-card-half">
-        <div class="profile-card-title">Security Settings</div>
-        <div class="profile-kv"><span>Login Count</span><strong>${user.login_count || 0}</strong></div>
-        <div class="profile-kv"><span>Last Login</span><strong>${user.last_login ? fmtDate(user.last_login) : 'Not recorded'}</strong></div>
+        <div class="profile-card-title">${esc(tr('securitySettings', language))}</div>
+        <div class="profile-kv"><span>${esc(tr('loginCount', language))}</span><strong>${user.login_count || 0}</strong></div>
+        <div class="profile-kv"><span>${esc(tr('lastLogin', language))}</span><strong>${user.last_login ? fmtDate(user.last_login) : esc(tr('notRecorded', language))}</strong></div>
       </div>
 
       <div class="profile-card profile-card-half">
-        <div class="profile-card-title">Activity Information</div>
-        <div class="profile-kv"><span>Files Uploaded</span><strong>${profile.total_uploads || analytics.new_files_7d || 0}</strong></div>
-        <div class="profile-kv"><span>Downloads</span><strong>${profile.total_downloads || 0}</strong></div>
-        <div class="profile-kv"><span>Duplicate Alerts</span><strong>${alerts.length}</strong></div>
-        <div class="profile-card-title" style="margin-top:16px">Recent Activity</div>
-        ${history.length ? history.map(h => `<div style="padding:8px 0;border-bottom:1px solid var(--border)"><div>${esc(h.file_name || h.action || 'Activity')}</div><div class="mono">${esc(h.status || '')} · ${fmtDate(h.attempt_timestamp)}</div></div>`).join('') : '<div style="color:var(--text-muted)">No recent activity.</div>'}
+        <div class="profile-card-title">${esc(tr('activityInformation', language))}</div>
+        <div class="profile-kv"><span>${esc(tr('filesUploaded', language))}</span><strong>${profile.total_uploads || analytics.new_files_7d || 0}</strong></div>
+        <div class="profile-kv"><span>${esc(tr('downloads', language))}</span><strong>${profile.total_downloads || 0}</strong></div>
+        <div class="profile-kv"><span>${esc(tr('duplicateAlerts', language))}</span><strong>${alerts.length}</strong></div>
+        <div class="profile-card-title" style="margin-top:16px">${esc(tr('recentActivity', language))}</div>
+        ${history.length ? history.map(h => `<div style="padding:8px 0;border-bottom:1px solid var(--border)"><div>${esc(h.file_name || h.action || 'Activity')}</div><div class="mono">${esc(h.status || '')} · ${fmtDate(h.attempt_timestamp)}</div></div>`).join('') : `<div style="color:var(--text-muted)">${esc(tr('noHistoryYet', language))}</div>`}
       </div>
 
       <div class="profile-card">
-        <div class="profile-card-title">Permissions</div>
-        <div class="profile-kv"><span>Access Level</span><strong>${isAdmin() ? 'Full system access' : 'Registered user access'}</strong></div>
-        <div class="profile-kv"><span>User Role</span><strong>${roleLabel(user.role)}</strong></div>
+        <div class="profile-card-title">${esc(tr('permissions', language))}</div>
+        <div class="profile-kv"><span>${esc(tr('accessLevel', language))}</span><strong>${isAdmin() ? esc(tr('fullSystemAccess', language)) : esc(tr('registeredUserAccess', language))}</strong></div>
+        <div class="profile-kv"><span>${esc(tr('userRole', language))}</span><strong>${roleLabel(user.role)}</strong></div>
         <div class="permission-list">${permissions.map(p => `<span class="badge badge-muted">${esc(p)}</span>`).join('')}</div>
       </div>
 
       <div class="profile-card">
-        <div class="profile-card-title">Reports & Statistics</div>
-        <div class="profile-kv"><span>Duplicate Detection Count</span><strong>${profile.duplicates_found || analytics.duplicates_detected || 0}</strong></div>
-        <div class="profile-kv"><span>Download Statistics</span><strong>${profile.total_downloads || 0}</strong></div>
-        <div class="profile-kv"><span>Storage Usage</span><strong>${fmtBytes((analytics.total_storage_gb || 0) * 1024 * 1024 * 1024)}</strong></div>
+        <div class="profile-card-title">${esc(tr('reportsStatistics', language))}</div>
+        <div class="profile-kv"><span>${esc(tr('duplicateDetectionCount', language))}</span><strong>${profile.duplicates_found || analytics.duplicates_detected || 0}</strong></div>
+        <div class="profile-kv"><span>${esc(tr('downloadStatistics', language))}</span><strong>${profile.total_downloads || 0}</strong></div>
+        <div class="profile-kv"><span>${esc(tr('storageUsage', language))}</span><strong>${fmtBytes((analytics.total_storage_gb || 0) * 1024 * 1024 * 1024)}</strong></div>
       </div>
 
       <div class="profile-card">
-        <div class="profile-card-title">Settings</div>
+        <div class="profile-card-title">${esc(tr('settings', language))}</div>
         <div class="form-group">
-          <label class="form-label">Theme</label>
+          <label class="form-label">${esc(tr('theme', language))}</label>
           <select class="form-select" id="profile-theme">
-            <option value="dark" ${profile.theme === 'dark' ? 'selected' : ''}>Dark</option>
-            <option value="light" ${profile.theme === 'light' ? 'selected' : ''}>Light</option>
+            <option value="dark" ${profile.theme === 'dark' ? 'selected' : ''}>${esc(tr('dark', language))}</option>
+            <option value="light" ${profile.theme === 'light' ? 'selected' : ''}>${esc(tr('light', language))}</option>
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Language</label>
+          <label class="form-label">${esc(tr('language', language))}</label>
           <select class="form-select" id="profile-language">
             <option value="en" ${profile.language === 'en' ? 'selected' : ''}>English</option>
             <option value="hi" ${profile.language === 'hi' ? 'selected' : ''}>Hindi</option>
@@ -2196,12 +2639,11 @@ async function loadProfilePage() {
           </select>
         </div>
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;color:var(--text-secondary)">
-          <input type="checkbox" id="profile-realtime-alerts" ${prefs.real_time_alerts !== false ? 'checked' : ''}> Real-time alerts
+          <input type="checkbox" id="profile-realtime-alerts" ${prefs.real_time_alerts !== false ? 'checked' : ''}> ${esc(tr('realTimeAlerts', language))}
         </label>
         <div class="profile-actions">
-          <button class="btn btn-primary btn-sm" onclick="saveProfileSettings()">Save Settings</button>
-          <button class="btn btn-secondary btn-sm" onclick="contactAdmin()">Contact Admin</button>
-          <button class="btn btn-danger btn-sm" onclick="logout()">Logout</button>
+          <button class="btn btn-primary btn-sm" onclick="saveProfileSettings()">${esc(tr('saveSettings', language))}</button>
+          <button class="btn btn-danger btn-sm" onclick="logout()">${esc(tr('logout', language))}</button>
         </div>
       </div>
     </div>
@@ -2209,7 +2651,7 @@ async function loadProfilePage() {
 }
 
 function roleLabel(role) {
-  return role === 'admin' || role === 'administrator' ? 'Administrator' : 'Registered User';
+  return role === 'admin' || role === 'administrator' ? tr('administrator') : tr('registeredUser');
 }
 
 function previewProfileAvatar(input) {
@@ -2301,7 +2743,7 @@ async function saveProfileSettings() {
     }
   });
   if (r.success) {
-    toast('Profile saved.', 'success');
+    toast(tr('profileSaved'), 'success');
     applyUserPreferences({ profile: { theme, language, preferences: prefs } });
     const me = await api('/api/profile/me');
     if (me.success) {
@@ -2311,11 +2753,7 @@ async function saveProfileSettings() {
       applyUserPreferences(currentUser);
     }
     loadProfilePage();
-  } else toast(r.error || 'Could not save profile.', 'error');
-}
-
-function contactAdmin() {
-  window.location.href = 'mailto:admin@ddas.local?subject=DDAS%20Profile%20Support';
+  } else toast(r.error || tr('couldNotSaveProfile'), 'error');
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -2412,7 +2850,7 @@ async function cleanupOldExports() {
 // ═════════════════════════════════════════════════════════════
 async function loadDuplicateDetector() {
   const container = document.getElementById('duplicates-container');
-  container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)"><div style="font-size:40px;margin-bottom:16px">⏳</div><div style="font-size:14px">Loading duplicate detector...</div></div>';
+  container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)"><div style="font-size:40px;margin-bottom:16px">⏳</div><div style="font-size:14px">${esc(tr('loadingDuplicateDetector'))}</div></div>`;
   
   try {
     // Fetch statistics and duplicate data in parallel
@@ -2454,19 +2892,19 @@ async function loadDuplicateDetector() {
         <!-- SECTION 1: Directory Scanner -->
         <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px;margin-bottom:24px">
           <div style="font-weight:600;color:var(--text-primary);margin-bottom:12px;display:flex;align-items:center;gap:8px">
-            📁 Scan Files & Folders for Duplicates
+            📁 ${esc(tr('scanFilesFolders'))}
           </div>
           <div style="display:flex;gap:8px;margin-bottom:12px">
-            <input type="text" id="scan-directory" placeholder="Enter folder path (e.g., C:\\Users\\Downloads or /home/user/documents)" 
+            <input type="text" id="scan-directory" placeholder="${esc(tr('folderPathPlaceholder'))}" 
               style="flex:1;padding:9px 13px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary)" />
             <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)">
               <input type="checkbox" id="scan-recursive" checked />
-              Scan subfolders
+              ${esc(tr('scanSubfolders'))}
             </label>
           </div>
           <button class="btn btn-primary" onclick="startSystemScan()" style="width:100%;justify-content:center">
             <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M21 5a2 2 0 0 0-2-2h-4V3a2 2 0 0 0-4 0v2H5a2 2 0 0 0-2 2v3l21 0V5zM3 12h18M5 20h14a2 2 0 0 0 2-2v-3H3v3a2 2 0 0 0 2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            Scan Directory
+            ${esc(tr('scanDirectory'))}
           </button>
           <div id="scan-progress-display" style="margin-top:12px"></div>
         </div>
@@ -2474,15 +2912,15 @@ async function loadDuplicateDetector() {
         <!-- SECTION 1B: Search By Filename (System-Wide) -->
         <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px;margin-bottom:24px">
           <div style="font-weight:600;color:var(--text-primary);margin-bottom:12px;display:flex;align-items:center;gap:8px">
-            🔍 Search for Duplicate Files by Name
+            🔍 ${esc(tr('searchDuplicateFilesByName'))}
           </div>
           <div style="display:flex;gap:8px;margin-bottom:12px">
-            <input type="text" id="search-filename" placeholder="Enter filename (e.g., photo.jpg, document.pdf, or *.jpg)" 
+            <input type="text" id="search-filename" placeholder="${esc(tr('filenamePlaceholder'))}" 
               style="flex:1;padding:9px 13px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary)" />
           </div>
           <button class="btn btn-primary" onclick="startFilenameDuplicateSearch()" style="width:100%;justify-content:center">
             <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            Search System for Duplicates
+            ${esc(tr('searchSystemDuplicates'))}
           </button>
           <div id="search-progress-display" style="margin-top:12px"></div>
         </div>
@@ -2490,33 +2928,33 @@ async function loadDuplicateDetector() {
         <!-- SECTION 2: Statistics Grid -->
         <div class="stats-grid" style="margin-bottom:24px">
           <div class="stat-card">
-            <div class="stat-label">Duplicate Groups</div>
+            <div class="stat-label">${esc(tr('duplicateGroups'))}</div>
             <div class="stat-value warning" id="stat-dup-groups">${stats.duplicate_groups || 0}</div>
-            <div class="stat-sub">groups found</div>
+            <div class="stat-sub">${esc(tr('groupsFound'))}</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Duplicate Files</div>
+            <div class="stat-label">${esc(tr('duplicateFiles'))}</div>
             <div class="stat-value" id="stat-dup-files">${stats.duplicate_files || 0}</div>
-            <div class="stat-sub">redundant copies</div>
+            <div class="stat-sub">${esc(tr('redundantCopies'))}</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Storage Wasted</div>
+            <div class="stat-label">${esc(tr('storageWasted'))}</div>
             <div class="stat-value danger" id="stat-wasted">${fmtBytes(stats.wasted_storage_bytes || 0)}</div>
-            <div class="stat-sub">can be recovered</div>
+            <div class="stat-sub">${esc(tr('canBeRecovered'))}</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Unique Files</div>
+            <div class="stat-label">${esc(tr('uniqueFiles'))}</div>
             <div class="stat-value success" id="stat-unique">${stats.unique_files || 0}</div>
-            <div class="stat-sub">no duplicates</div>
+            <div class="stat-sub">${esc(tr('noDuplicates'))}</div>
           </div>
         </div>
         
         <!-- SECTION 3: Search & Filter -->
         <div style="margin-bottom:16px">
           <div class="search-bar">
-            <input class="search-input" id="dup-search" placeholder="🔍 Search by filename or location..." style="flex:1" />
-            <button class="btn btn-primary btn-sm" onclick="filterDuplicates()">Search</button>
-            <button class="btn btn-secondary btn-sm" onclick="clearDuplicateSearch()">Clear</button>
+            <input class="search-input" id="dup-search" placeholder="🔍 ${esc(tr('duplicateSearchPlaceholder'))}" style="flex:1" />
+            <button class="btn btn-primary btn-sm" onclick="filterDuplicates()">${esc(tr('search'))}</button>
+            <button class="btn btn-secondary btn-sm" onclick="clearDuplicateSearch()">${esc(tr('clear'))}</button>
           </div>
         </div>
         
@@ -2525,7 +2963,7 @@ async function loadDuplicateDetector() {
     `;
     
     if (!duplicates || !duplicates.length) {
-      html += '<div class="empty-state" style="padding:40px"><svg width="40" height="40" fill="none" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.5"/></svg><p>No duplicates found yet. Use the scanner above to find duplicates on your computer.</p></div>';
+      html += `<div class="empty-state" style="padding:40px"><svg width="40" height="40" fill="none" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.5"/></svg><p>${esc(tr('noDuplicatesFound'))}</p></div>`;
     } else {
       duplicates.forEach((group, idx) => {
         html += renderDuplicateGroup(group, idx);
@@ -2883,8 +3321,13 @@ function clearDuplicateSearch() {
 }
 
 async function loadAvailableExports() {
-  const r = await api('/api/export/list');
   const list = document.getElementById('exports-list');
+  list.innerHTML = '<div class="empty-state"><p>Loading exports...</p></div>';
+  const r = await api('/api/export/list');
+  if (!r.success) {
+    list.innerHTML = `<div class="empty-state"><p>${esc(r.error || 'Failed to load exports.')}</p></div>`;
+    return;
+  }
   if (!r.success || !r.data?.length) {
     list.innerHTML = '<div class="empty-state"><p>No exports available yet.</p></div>';
     return;

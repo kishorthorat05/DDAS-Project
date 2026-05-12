@@ -117,16 +117,30 @@ def _process_file(
             file_size=file_size,
             file_hash=file_hash,
             is_duplicate=result["is_duplicate"],
+            user_id=user_id,
+            user_name=user_name,
         )
 
     except PermissionError:
         result["error"] = "Permission denied"
-        ScanLogService.log(file_path=file_path, file_name=file_name, error="Permission denied")
+        ScanLogService.log(
+            file_path=file_path,
+            file_name=file_name,
+            error="Permission denied",
+            user_id=user_id,
+            user_name=user_name,
+        )
     except FileNotFoundError:
         result["error"] = "File not found (may have been moved)"
     except Exception as exc:
         result["error"] = str(exc)
-        ScanLogService.log(file_path=file_path, file_name=file_name, error=str(exc))
+        ScanLogService.log(
+            file_path=file_path,
+            file_name=file_name,
+            error=str(exc),
+            user_id=user_id,
+            user_name=user_name,
+        )
 
     return result
 
@@ -162,6 +176,8 @@ def manual_scan(
             file_path=scan_dir,
             file_name="No files found",
             error="No files found to scan",
+            user_id=user_id,
+            user_name=user_name,
         )
 
     return results

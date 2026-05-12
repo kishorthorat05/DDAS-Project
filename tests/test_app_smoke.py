@@ -109,6 +109,132 @@ def test_first_admin_can_register_with_admin_profile(client):
     assert "*" in user_data["profile"]["permissions"]
 
 
+def test_history_is_scoped_to_current_user(client):
+    user_one, headers_one = _register_and_login(client)
+    user_two, headers_two = _register_and_login(client)
+
+    with get_db() as conn:
+        user_one_id = conn.execute("SELECT id FROM users WHERE username = ?", (user_one,)).fetchone()["id"]
+        user_two_id = conn.execute("SELECT id FROM users WHERE username = ?", (user_two,)).fetchone()["id"]
+        conn.execute(
+            """INSERT INTO download_history
+               (user_id, user_name, file_name, file_hash, action, status)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_one_id, user_one, "one.csv", "hash-one", "web_upload", "success"),
+        )
+        conn.execute(
+            """INSERT INTO download_history
+               (user_id, user_name, file_name, file_hash, action, status)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_two_id, user_two, "two.csv", "hash-two", "web_upload", "success"),
+        )
+        conn.execute(
+            """INSERT INTO download_history
+               (user_id, user_name, file_name, file_hash, action, status)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (None, user_one, "legacy-name-only.csv", "hash-legacy", "web_upload", "success"),
+        )
+
+    response_one = client.get("/api/history?limit=100", headers=headers_one)
+    assert response_one.status_code == 200
+    files_one = {row["file_name"] for row in response_one.get_json()["data"]}
+    assert files_one == {"one.csv"}
+
+    response_two = client.get("/api/history?limit=100", headers=headers_two)
+    assert response_two.status_code == 200
+    files_two = {row["file_name"] for row in response_two.get_json()["data"]}
+    assert files_two == {"two.csv"}
+
+
+def test_scan_logs_are_scoped_to_current_user(client):
+    user_one, headers_one = _register_and_login(client)
+    user_two, headers_two = _register_and_login(client)
+
+    with get_db() as conn:
+        user_one_id = conn.execute("SELECT id FROM users WHERE username = ?", (user_one,)).fetchone()["id"]
+        user_two_id = conn.execute("SELECT id FROM users WHERE username = ?", (user_two,)).fetchone()["id"]
+        conn.execute(
+            """INSERT INTO scan_logs
+               (user_id, user_name, file_path, file_name, file_size, file_hash, is_duplicate)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (user_one_id, user_one, "/tmp/one.csv", "one.csv", 10, "hash-one", 0),
+        )
+        conn.execute(
+            """INSERT INTO scan_logs
+               (user_id, user_name, file_path, file_name, file_size, file_hash, is_duplicate)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (user_two_id, user_two, "/tmp/two.csv", "two.csv", 20, "hash-two", 0),
+        )
+
+    response_one = client.get("/api/scan-logs?limit=100", headers=headers_one)
+    assert response_one.status_code == 200
+    files_one = {row["file_name"] for row in response_one.get_json()["data"]}
+    assert files_one == {"one.csv"}
+
+    response_two = client.get("/api/scan-logs?limit=100", headers=headers_two)
+    assert response_two.status_code == 200
+    files_two = {row["file_name"] for row in response_two.get_json()["data"]}
+    assert files_two == {"two.csv"}
+
+
+def test_analytics_uses_scan_log_storage_and_duplicate_bytes(client):
+    username, _ = _register_and_login(client)
+
+    with get_db() as conn:
+        user_id = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
+        conn.execute(
+            """INSERT INTO scan_logs
+               (user_id, user_name, file_path, file_name, file_size, file_hash, is_duplicate)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, username, "/tmp/analytics-new.csv", "analytics-new.csv", 2_500_000, "analytics-new", 0),
+        )
+        conn.execute(
+            """INSERT INTO scan_logs
+               (user_id, user_name, file_path, file_name, file_size, file_hash, is_duplicate)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, username, "/tmp/analytics-dupe.csv", "analytics-dupe.csv", 1_500_000, "analytics-dupe", 1),
+        )
+
+    response = client.get("/api/analytics/dashboard")
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["total_storage_bytes"] >= 4_000_000
+    assert data["bandwidth_saved_bytes"] >= 1_500_000
+
+
+def test_dataset_detail_history_is_scoped_to_current_user(client):
+    user_one, headers_one = _register_and_login(client)
+    user_two, _ = _register_and_login(client)
+
+    with get_db() as conn:
+        user_one_id = conn.execute("SELECT id FROM users WHERE username = ?", (user_one,)).fetchone()["id"]
+        user_two_id = conn.execute("SELECT id FROM users WHERE username = ?", (user_two,)).fetchone()["id"]
+        dataset_id = "dataset-history-scope"
+        conn.execute(
+            """INSERT INTO datasets
+               (id, file_hash, file_name, file_size, file_path, file_type, user_id, user_name)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (dataset_id, "dataset-scope-hash", "shared.csv", 10, "/tmp/shared.csv", ".csv", user_one_id, user_one),
+        )
+        conn.execute(
+            """INSERT INTO download_history
+               (dataset_id, user_id, user_name, file_name, file_hash, action, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (dataset_id, user_one_id, user_one, "one-dataset.csv", "hash-one-dataset", "download_attempt", "success"),
+        )
+        conn.execute(
+            """INSERT INTO download_history
+               (dataset_id, user_id, user_name, file_name, file_hash, action, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (dataset_id, user_two_id, user_two, "two-dataset.csv", "hash-two-dataset", "download_attempt", "success"),
+        )
+
+    response = client.get(f"/api/datasets/{dataset_id}", headers=headers_one)
+    assert response.status_code == 200
+    history_files = {row["file_name"] for row in response.get_json()["data"]["history"]}
+    assert history_files == {"one-dataset.csv"}
+
+
 def test_file_upload_registers_dataset(client):
     _, headers = _register_and_login(client)
     response = client.post(
@@ -125,6 +251,11 @@ def test_file_upload_registers_dataset(client):
     payload = response.get_json()
     assert payload["data"]["is_duplicate"] is False
     assert payload["data"]["dataset"]["file_name"] == "sample.csv"
+
+    scan_logs_response = client.get("/api/scan-logs?limit=10", headers=headers)
+    assert scan_logs_response.status_code == 200
+    scan_log_files = {row["file_name"] for row in scan_logs_response.get_json()["data"]}
+    assert "sample.csv" in scan_log_files
 
 
 def test_profile_update_and_password_change(client):

@@ -518,6 +518,8 @@
 
         async load() {
             try {
+                this.clearError();
+                this.showLoading();
                 // Load statistics
                 const statsResponse = await fetch(`${this.apiBaseUrl}/duplicates/statistics`, {
                     headers: { 'Authorization': `Bearer ${this.getToken()}` }
@@ -526,6 +528,8 @@
                     const statsData = await statsResponse.json();
                     this.statistics = statsData.data || {};
                     this.updateStatistics();
+                } else {
+                    throw new Error(`Statistics request failed (${statsResponse.status})`);
                 }
 
                 // Load duplicates
@@ -536,6 +540,8 @@
                     const dupsData = await dupsResponse.json();
                     this.duplicates = dupsData.data?.duplicates || [];
                     this.renderDuplicates();
+                } else {
+                    throw new Error(`Duplicate list request failed (${dupsResponse.status})`);
                 }
             } catch (error) {
                 console.error('Error loading duplicates:', error);
@@ -667,6 +673,8 @@
                     const data = await response.json();
                     this.duplicates = data.data?.duplicates || [];
                     this.renderDuplicates();
+                } else {
+                    throw new Error(`Search request failed (${response.status})`);
                 }
             } catch (error) {
                 this.showError(`Search failed: ${error.message}`);
@@ -683,6 +691,8 @@
                     const data = await response.json();
                     console.log('Duplicate Details:', data.data);
                     alert(`Found ${data.data.total_copies} copies.\nStorage saved if deduplicated: ${(data.data.storage_saved_if_deduplicated / (1024**3)).toFixed(2)} GB`);
+                } else {
+                    throw new Error(`Details request failed (${response.status})`);
                 }
             } catch (error) {
                 this.showError(`Failed to load details: ${error.message}`);
@@ -702,6 +712,8 @@
                 if (response.ok) {
                     alert('Scan completed. Refreshing results...');
                     await this.load();
+                } else {
+                    throw new Error(`Scan request failed (${response.status})`);
                 }
             } catch (error) {
                 this.showError(`Scan failed: ${error.message}`);
@@ -709,7 +721,7 @@
         },
 
         refresh() {
-            this.load();
+            return this.load();
         },
 
         formatBytes(bytes) {
@@ -731,9 +743,26 @@
             setTimeout(() => errorDiv.classList.remove('show'), 5000);
         },
 
+        clearError() {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = '';
+            errorDiv.classList.remove('show');
+        },
+
+        showLoading() {
+            const list = document.getElementById('duplicates-list');
+            list.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">ðŸ“</div>
+                    <div class="empty-state-text">Loading duplicate information...</div>
+                    <div class="loading-spinner"></div>
+                </div>
+            `;
+        },
+
         getToken() {
             // Get token from localStorage or sessionStorage
-            return localStorage.getItem('access_token') || sessionStorage.getItem('access_token') || '';
+            return localStorage.getItem('ddas_token') || localStorage.getItem('access_token') || sessionStorage.getItem('access_token') || '';
         }
     };
 

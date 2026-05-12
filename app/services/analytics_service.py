@@ -31,19 +31,34 @@ def get_dashboard_stats() -> Dict:
             "SELECT COUNT(*) as count FROM alerts WHERE is_read = 0"
         ).fetchone()["count"]
         
-        # Total storage
-        storage_bytes = conn.execute(
+        # Total repository storage
+        dataset_storage_bytes = conn.execute(
             "SELECT SUM(file_size) as total FROM datasets"
         ).fetchone()["total"] or 0
+
+        # Total observed scanned storage. This keeps analytics useful even
+        # when users scan local folders before registering files.
+        scanned_storage_bytes = conn.execute(
+            "SELECT SUM(file_size) as total FROM scan_logs WHERE error IS NULL"
+        ).fetchone()["total"] or 0
+
+        storage_bytes = max(dataset_storage_bytes, scanned_storage_bytes)
         
-        # Estimated bandwidth saved (total size of duplicate files)
-        duplicates_size = conn.execute("""
-            SELECT SUM(d.file_size) as total FROM datasets d
-            WHERE EXISTS (
-                SELECT 1 FROM alerts a 
-                WHERE a.file_hash = d.file_hash AND a.alert_type = 'duplicate'
-            )
+        # Estimated bandwidth saved: duplicate scans/uploads prevented a
+        # redundant copy. Prefer logged duplicate sizes, with history as a
+        # fallback for older rows.
+        duplicate_scan_bytes = conn.execute("""
+            SELECT SUM(file_size) as total
+            FROM scan_logs
+            WHERE is_duplicate = 1 AND error IS NULL
         """).fetchone()["total"] or 0
+        duplicate_history_bytes = conn.execute("""
+            SELECT SUM(COALESCE(dh.bandwidth_saved, d.file_size, 0)) as total
+            FROM download_history dh
+            LEFT JOIN datasets d ON d.id = dh.dataset_id
+            WHERE dh.status = 'duplicate_detected'
+        """).fetchone()["total"] or 0
+        duplicates_size = max(duplicate_scan_bytes, duplicate_history_bytes)
         
         # Recently added files (last 7 days)
         week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
@@ -68,6 +83,8 @@ def get_dashboard_stats() -> Dict:
         "active_users_30d": active_users,
         "unread_alerts": unread_alerts,
         "total_storage_bytes": storage_bytes,
+        "repository_storage_bytes": dataset_storage_bytes,
+        "scanned_storage_bytes": scanned_storage_bytes,
         "total_storage_gb": storage_bytes / (1024 ** 3),
         "bandwidth_saved_bytes": duplicates_size,
         "bandwidth_saved_gb": duplicates_size / (1024 ** 3),

@@ -374,6 +374,8 @@ CREATE INDEX IF NOT EXISTS idx_user_profile_verified ON user_profiles(is_verifie
 CREATE TABLE IF NOT EXISTS scan_logs (
     id                  TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
     organization_id     TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id             TEXT REFERENCES users(id) ON DELETE SET NULL,
+    user_name           TEXT,
     file_path           TEXT NOT NULL,
     file_name           TEXT,
     file_size           INTEGER,
@@ -399,6 +401,13 @@ def init_db() -> None:
     db_path = _get_db_path()
     with get_db() as conn:
         conn.executescript(SCHEMA_SQL)
+        existing_scan_cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(scan_logs)").fetchall()
+        }
+        if "user_id" not in existing_scan_cols:
+            conn.execute("ALTER TABLE scan_logs ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE SET NULL")
+        if "user_name" not in existing_scan_cols:
+            conn.execute("ALTER TABLE scan_logs ADD COLUMN user_name TEXT")
         conn.execute("UPDATE users SET role = 'registered' WHERE role = 'operator'")
     print(f"[DB] Initialized at {db_path}")
 

@@ -304,8 +304,21 @@ class HistoryService:
             )
 
     @staticmethod
-    def get_for_dataset(dataset_id: str, limit: int = 50) -> list[dict]:
+    def get_for_dataset(
+        dataset_id: str,
+        limit: int = 50,
+        user_id: str | None = None,
+    ) -> list[dict]:
         with get_db() as conn:
+            if user_id:
+                rows = conn.execute(
+                    """SELECT * FROM download_history
+                       WHERE dataset_id = ? AND user_id = ?
+                       ORDER BY attempt_timestamp DESC LIMIT ?""",
+                    (dataset_id, user_id, limit),
+                ).fetchall()
+                return rows_to_list(rows)
+
             rows = conn.execute(
                 """SELECT * FROM download_history
                    WHERE dataset_id = ?
@@ -315,14 +328,14 @@ class HistoryService:
         return rows_to_list(rows)
 
     @staticmethod
-    def get_recent(limit: int = 100, user_id: str | None = None, user_name: str | None = None) -> list[dict]:
+    def get_recent(limit: int = 100, user_id: str | None = None) -> list[dict]:
         with get_db() as conn:
             if user_id:
                 rows = conn.execute(
                     """SELECT * FROM download_history
-                       WHERE user_id = ? OR (user_id IS NULL AND user_name = ?)
+                       WHERE user_id = ?
                        ORDER BY attempt_timestamp DESC LIMIT ?""",
-                    (user_id, user_name or "", limit),
+                    (user_id, limit),
                 ).fetchall()
                 return rows_to_list(rows)
 
@@ -404,19 +417,30 @@ class ScanLogService:
         file_hash: str = "",
         is_duplicate: bool = False,
         error: str = "",
+        user_id: str | None = None,
+        user_name: str = "",
     ) -> None:
         with get_db() as conn:
             conn.execute(
                 """INSERT INTO scan_logs
-                   (file_path, file_name, file_size, file_hash, is_duplicate, error)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
+                   (file_path, file_name, file_size, file_hash, is_duplicate, error, user_id, user_name)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (file_path, file_name, file_size, file_hash,
-                 1 if is_duplicate else 0, error or None),
+                 1 if is_duplicate else 0, error or None, user_id, user_name or None),
             )
 
     @staticmethod
-    def get_recent(limit: int = 100) -> list[dict]:
+    def get_recent(limit: int = 100, user_id: str | None = None) -> list[dict]:
         with get_db() as conn:
+            if user_id:
+                rows = conn.execute(
+                    """SELECT * FROM scan_logs
+                       WHERE user_id = ?
+                       ORDER BY scanned_at DESC LIMIT ?""",
+                    (user_id, limit),
+                ).fetchall()
+                return rows_to_list(rows)
+
             rows = conn.execute(
                 "SELECT * FROM scan_logs ORDER BY scanned_at DESC LIMIT ?", (limit,)
             ).fetchall()

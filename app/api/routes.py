@@ -451,7 +451,12 @@ def get_dataset(dataset_id: str):
     ds = DatasetService.get_by_id(dataset_id)
     if not ds:
         return _err("Dataset not found.", 404, "NOT_FOUND")
-    history = HistoryService.get_for_dataset(dataset_id)
+    current_user = g.get("current_user", {}) or {}
+    include_all = request.args.get("scope") == "all" and current_user.get("role") == "admin"
+    history = HistoryService.get_for_dataset(
+        dataset_id,
+        user_id=None if include_all else current_user.get("sub"),
+    )
     return _ok({"dataset": ds, "history": history})
 
 
@@ -521,6 +526,15 @@ def upload_file():
             status="duplicate_detected",
             ip_address=_get_ip(),
         )
+        ScanLogService.log(
+            file_path=str(dest),
+            file_name=filename,
+            file_size=dest.stat().st_size if dest.exists() else 0,
+            file_hash=file_hash,
+            is_duplicate=True,
+            user_id=user_id,
+            user_name=user_name,
+        )
         AlertService.create(
             title=f"Duplicate upload: {filename}",
             message=f"Uploaded file matches '{existing['file_name']}' already in repository.",
@@ -546,6 +560,15 @@ def upload_file():
     HistoryService.log(
         dataset_id=ds["id"], user_id=user_id, user_name=user_name, file_name=filename,
         file_hash=file_hash, action="web_upload", status="success", ip_address=_get_ip(),
+    )
+    ScanLogService.log(
+        file_path=str(dest),
+        file_name=filename,
+        file_size=file_size,
+        file_hash=file_hash,
+        is_duplicate=False,
+        user_id=user_id,
+        user_name=user_name,
     )
 
     insights = get_file_insights(filename, file_size, file_type, description)
@@ -730,10 +753,13 @@ def stop_monitor_route():
 
 
 @monitor_bp.get("/scan-logs")
-@jwt_required
+@require_auth
 def get_scan_logs():
     limit = min(int(request.args.get("limit", 100)), 500)
-    return _ok(ScanLogService.get_recent(limit))
+    current_user = g.get("current_user", {}) or {}
+    if current_user.get("role") == "admin":
+        return _ok(ScanLogService.get_recent(limit))
+    return _ok(ScanLogService.get_recent(limit, user_id=current_user.get("sub")))
 
 
 @monitor_bp.get("/history")
@@ -744,11 +770,7 @@ def get_history():
     include_all = request.args.get("scope") == "all" and current_user.get("role") == "admin"
     if include_all:
         return _ok(HistoryService.get_recent(limit))
-    return _ok(HistoryService.get_recent(
-        limit,
-        user_id=current_user.get("sub"),
-        user_name=current_user.get("username"),
-    ))
+    return _ok(HistoryService.get_recent(limit, user_id=current_user.get("sub")))
 
 
 # ═════════════════════════════════════════════════════════════════════════════
