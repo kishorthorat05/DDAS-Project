@@ -1278,6 +1278,27 @@ def upload_profile_avatar():
         return _err(f"Profile photo upload failed: {exc}", 500)
 
 
+@profile_bp.delete("/avatar")
+@require_auth
+def delete_profile_avatar():
+    """Remove the current user's profile avatar URL and local avatar file if present."""
+    uid = g.current_user.get("sub")
+    profile = db_get_user_profile(uid) or {}
+    avatar_url = profile.get("avatar_url") or ""
+
+    try:
+        if avatar_url.startswith("/api/profile/avatar/"):
+            filename = sanitize_filename(avatar_url.rsplit("/", 1)[-1])
+            avatar_path = _profile_avatar_folder() / filename
+            if avatar_path.exists() and avatar_path.is_file():
+                avatar_path.unlink()
+
+        updated_profile = ProfileService.update_user_profile(uid, avatar_url="")
+        return _ok({"profile": updated_profile}, message="Profile photo removed.")
+    except Exception as exc:
+        return _err(f"Profile photo removal failed: {exc}", 500)
+
+
 @profile_bp.patch("/me")
 @require_auth
 def update_my_profile():

@@ -255,9 +255,22 @@ html, body {
 .main {
   overflow-y: auto;
   background: var(--bg-base);
+  min-height: 0;
 }
 .page { display: none; padding: 28px 28px 60px; }
 .page.active { display: block; }
+#page-ai-chat.page.active {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 16px;
+}
+#page-ai-chat .page-header {
+  flex-shrink: 0;
+  margin-bottom: 16px;
+}
 
 /* ── Page Headers ─────────────────────────────── */
 .page-header {
@@ -457,14 +470,16 @@ tr:hover td { background: rgba(255,255,255,.02); }
 /* ── Chat ─────────────────────────────────────── */
 .chat-container {
   display: flex; flex-direction: column;
-  height: calc(100vh - 180px);
+  width: 100%;
+  flex: 1;
+  min-height: 0;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
 .chat-messages {
-  flex: 1; overflow-y: auto;
+  flex: 1; min-height: 0; overflow-y: auto;
   padding: 20px; display: flex; flex-direction: column; gap: 16px;
 }
 .chat-bubble {
@@ -498,20 +513,33 @@ tr:hover td { background: rgba(255,255,255,.02); }
 .typing-dots span:nth-child(3) { animation-delay: .4s; }
 @keyframes typing { 0%,80%,100%{opacity:.2; transform:scale(.9)} 40%{opacity:1; transform:scale(1)} }
 .chat-input-row {
-  display: flex; gap: 8px; align-items: flex-end;
-  padding: 14px 16px;
+  display: flex; gap: 10px; align-items: flex-end;
+  padding: 16px 18px;
   border-top: 1px solid var(--border);
   background: var(--bg-raised);
+  flex-shrink: 0;
 }
 .chat-input {
-  flex: 1; padding: 9px 13px;
+  flex: 1;
+  min-height: 44px;
+  height: 44px;
+  max-height: 116px;
+  padding: 10px 14px;
   background: var(--bg-surface); color: var(--text-primary);
   border: 1px solid var(--border); border-radius: var(--radius-md);
-  font-size: 14px; font-family: var(--font-body);
-  resize: none; max-height: 120px;
+  font-size: 14px; line-height: 22px; font-family: var(--font-body);
+  resize: none;
+  overflow-y: hidden;
   outline: none; transition: var(--transition);
 }
 .chat-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+#chat-send-btn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex: 0 0 44px;
+  justify-content: center;
+}
 
 /* ── Alerts ───────────────────────────────────── */
 .alert-item {
@@ -687,6 +715,7 @@ tr:hover td { background: rgba(255,255,255,.02); }
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
 }
 .profile-avatar-field .form-input { flex: 1; min-width: 0; }
 .profile-avatar-file { font-size: 12px; color: var(--text-secondary); }
@@ -837,7 +866,7 @@ tr:hover td { background: rgba(255,255,255,.02); }
   .nav-item { padding: 8px 12px; border-radius: var(--radius-md); }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .page { padding: 16px; }
-  .chat-container { height: calc(100vh - 220px); }
+  #page-ai-chat.page.active { padding-bottom: 12px; }
   .profile-card,
   .profile-card-half,
   .profile-card-wide { grid-column: span 12; }
@@ -1550,6 +1579,25 @@ const I18N = {
     creating: 'Creating...',
     profileSaved: 'Profile saved.',
     couldNotSaveProfile: 'Could not save profile.',
+    userManagement: 'User Management',
+    userManagementSubtitle: 'Assign roles and control account access',
+    registeredUsers: 'Registered Users',
+    users: 'Users',
+    total: 'total',
+    active: 'active',
+    inactive: 'inactive',
+    admin: 'admin',
+    adminAccessRequired: 'Admin access required.',
+    loadingUsers: 'Loading users...',
+    couldNotLoadUsers: 'Could not load users.',
+    noUsersFound: 'No users found.',
+    logins: 'Logins',
+    never: 'Never',
+    activateUser: 'Activate user',
+    deactivateUser: 'Deactivate user',
+    removePhoto: 'Remove photo',
+    profilePhotoRemoved: 'Profile photo removed.',
+    couldNotRemovePhoto: 'Could not remove profile photo.',
   },
   hi: {
     dashboard: 'डैशबोर्ड',
@@ -1708,6 +1756,50 @@ Object.assign(I18N.mr, {
 // ═════════════════════════════════════════════════════════════
 // ROLE-BASED ACCESS CONTROL
 // ═════════════════════════════════════════════════════════════
+
+Object.assign(I18N.hi, {
+  userManagement: 'उपयोगकर्ता प्रबंधन',
+  userManagementSubtitle: 'भूमिकाएं असाइन करें और खाता पहुंच नियंत्रित करें',
+  registeredUsers: 'पंजीकृत उपयोगकर्ता',
+  users: 'उपयोगकर्ता',
+  total: 'कुल',
+  active: 'सक्रिय',
+  inactive: 'निष्क्रिय',
+  admin: 'एडमिन',
+  adminAccessRequired: 'एडमिन एक्सेस आवश्यक है।',
+  loadingUsers: 'उपयोगकर्ता लोड हो रहे हैं...',
+  couldNotLoadUsers: 'उपयोगकर्ता लोड नहीं हो सके।',
+  noUsersFound: 'कोई उपयोगकर्ता नहीं मिला।',
+  logins: 'लॉगिन',
+  never: 'कभी नहीं',
+  activateUser: 'उपयोगकर्ता सक्रिय करें',
+  deactivateUser: 'उपयोगकर्ता निष्क्रिय करें',
+  removePhoto: 'फोटो हटाएं',
+  profilePhotoRemoved: 'प्रोफाइल फोटो हटाई गई।',
+  couldNotRemovePhoto: 'प्रोफाइल फोटो हटाई नहीं जा सकी।'
+});
+
+Object.assign(I18N.mr, {
+  userManagement: 'वापरकर्ता व्यवस्थापन',
+  userManagementSubtitle: 'भूमिका असाइन करा आणि खाते प्रवेश नियंत्रित करा',
+  registeredUsers: 'नोंदणीकृत वापरकर्ते',
+  users: 'वापरकर्ते',
+  total: 'एकूण',
+  active: 'सक्रिय',
+  inactive: 'निष्क्रिय',
+  admin: 'अ‍ॅडमिन',
+  adminAccessRequired: 'अ‍ॅडमिन प्रवेश आवश्यक आहे.',
+  loadingUsers: 'वापरकर्ते लोड होत आहेत...',
+  couldNotLoadUsers: 'वापरकर्ते लोड करू शकलो नाही.',
+  noUsersFound: 'वापरकर्ते सापडले नाहीत.',
+  logins: 'लॉगिन',
+  never: 'कधीही नाही',
+  activateUser: 'वापरकर्ता सक्रिय करा',
+  deactivateUser: 'वापरकर्ता निष्क्रिय करा',
+  removePhoto: 'फोटो काढा',
+  profilePhotoRemoved: 'प्रोफाइल फोटो काढला.',
+  couldNotRemovePhoto: 'प्रोफाइल फोटो काढता आला नाही.'
+});
 
 /**
  * Get current user's role: 'guest' | 'registered' | 'admin'
@@ -1896,6 +1988,7 @@ function applyLanguage(language) {
     duplicates: t.duplicates,
     export: t.export,
     profile: t.profile,
+    'admin-users': t.userManagement || I18N.en.userManagement,
   };
 
   Object.entries(labels).forEach(([page, label]) => {
@@ -1947,6 +2040,9 @@ function applyLanguage(language) {
     '#page-duplicates .page-subtitle': 'duplicatesSubtitle',
     '#page-profile .page-title': 'profile',
     '#page-profile .page-subtitle': 'profileSubtitle',
+    '#page-admin-users .page-title': 'userManagement',
+    '#page-admin-users .page-subtitle': 'userManagementSubtitle',
+    '#page-admin-users .table-title': 'registeredUsers',
   };
   Object.entries(textTargets).forEach(([selector, key]) => setText(selector, t[key] || I18N.en[key]));
   const uploadTextNode = Array.from(document.querySelector('#upload-zone .upload-text')?.childNodes || [])
@@ -1956,7 +2052,7 @@ function applyLanguage(language) {
   const aiBadge = document.getElementById('ai-status-badge');
   if (aiBadge && !aiBadge.dataset.statusLoaded) aiBadge.textContent = t.checking || I18N.en.checking;
 
-  document.querySelectorAll('button[onclick="loadProfilePage()"], button[onclick="loadRepository()"], button[onclick="loadAlerts()"], button[onclick="loadHistory()"], button[onclick="loadAnalytics()"], button[onclick="loadAvailableExports()"]').forEach(btn => btn.textContent = t.refresh || I18N.en.refresh);
+  document.querySelectorAll('button[onclick="loadProfilePage()"], button[onclick="loadRepository()"], button[onclick="loadAlerts()"], button[onclick="loadHistory()"], button[onclick="loadAnalytics()"], button[onclick="loadAvailableExports()"], button[onclick="loadUserManagement()"]').forEach(btn => btn.textContent = t.refresh || I18N.en.refresh);
   setButtonLabel('button[onclick="triggerScan()"]', t.manualScan || I18N.en.manualScan);
   setButtonLabel('#upload-btn', t.uploadFile || I18N.en.uploadFile);
   setText('button[onclick="doSearch()"]', t.search || I18N.en.search);
@@ -2003,6 +2099,9 @@ function applyLanguage(language) {
     ['#page-history thead th:nth-child(1)', 'file'], ['#page-history thead th:nth-child(2)', 'action'],
     ['#page-history thead th:nth-child(3)', 'status'], ['#page-history thead th:nth-child(4)', 'user'],
     ['#page-history thead th:nth-child(5)', 'IP'], ['#page-history thead th:nth-child(6)', 'time'],
+    ['#page-admin-users thead th:nth-child(1)', 'user'], ['#page-admin-users thead th:nth-child(2)', 'role'],
+    ['#page-admin-users thead th:nth-child(3)', 'status'], ['#page-admin-users thead th:nth-child(4)', 'lastLogin'],
+    ['#page-admin-users thead th:nth-child(5)', 'logins'],
   ];
   tableHeaders.forEach(([selector, key]) => setText(selector, t[key] || I18N.en[key] || key));
 
@@ -2018,6 +2117,17 @@ function applyLanguage(language) {
 // ═════════════════════════════════════════════════════════════
 // API CLIENT
 // ═════════════════════════════════════════════════════════════
+const DEFAULT_API_ORIGIN = 'http://127.0.0.1:8080';
+
+function apiUrl(path) {
+  if (/^https?:\/\//i.test(path)) return path;
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  if (window.location.protocol === 'file:') {
+    return `${localStorage.getItem('ddas_api_origin') || DEFAULT_API_ORIGIN}${normalizedPath}`;
+  }
+  return normalizedPath;
+}
+
 async function api(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
   if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
@@ -2026,12 +2136,17 @@ async function api(path, opts = {}) {
     opts.body = JSON.stringify(opts.json);
   }
   try {
-    const res = await fetch(path, { ...opts, headers });
+    const res = await fetch(apiUrl(path), { ...opts, headers });
     const data = await res.json();
     if (res.status === 401 && authToken) { logout(); return data; }
     return { ...data, _status: res.status };
   } catch (e) {
-    return { success: false, error: e.message };
+    return {
+      success: false,
+      error: window.location.protocol === 'file:'
+        ? `Cannot reach DDAS server at ${localStorage.getItem('ddas_api_origin') || DEFAULT_API_ORIGIN}. Open ${DEFAULT_API_ORIGIN} or start the server.`
+        : e.message
+    };
   }
 }
 
@@ -2271,7 +2386,7 @@ async function doFileUpload() {
   fd.append('period', document.getElementById('meta-period').value);
   fd.append('spatial_domain', document.getElementById('meta-domain').value);
 
-  const r = await fetch('/api/upload/file', {
+  const r = await fetch(apiUrl('/api/upload/file'), {
     method: 'POST',
     headers: { ...(authToken ? { Authorization: 'Bearer ' + authToken } : {}) },
     body: fd,
@@ -2559,8 +2674,12 @@ async function clearChat() {
 }
 
 function autoResize(el) {
+  const minHeight = 44;
+  const maxHeight = 116;
   el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  const nextHeight = Math.min(Math.max(el.scrollHeight, minHeight), maxHeight);
+  el.style.height = nextHeight + 'px';
+  el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -2675,6 +2794,7 @@ async function loadProfilePage() {
             <div class="profile-avatar-field">
               <input class="form-input" id="profile-avatar" value="${esc(profile.avatar_url || '')}" placeholder="https://...">
               <input class="profile-avatar-file" id="profile-avatar-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" onchange="previewProfileAvatar(this)">
+              <button class="btn btn-secondary btn-sm" type="button" onclick="removeProfileAvatar()" ${avatarSrc ? '' : 'disabled'}>${esc(tr('removePhoto', language))}</button>
             </div>
           </div>
         </div>
@@ -2776,6 +2896,7 @@ function previewProfileAvatar(input) {
     };
     avatar.innerHTML = `<img src="${previewUrl}" alt="Profile image">`;
   }
+  document.querySelector('button[onclick="removeProfileAvatar()"]')?.removeAttribute('disabled');
 }
 
 function openProfileImageViewer(src) {
@@ -2809,6 +2930,30 @@ async function uploadProfileAvatarIfSelected() {
   const avatarInput = document.getElementById('profile-avatar');
   if (avatarInput) avatarInput.value = avatarUrl;
   return avatarUrl;
+}
+
+async function removeProfileAvatar() {
+  const language = localStorage.getItem('ddas_language') || 'en';
+  const r = await api('/api/profile/avatar', { method: 'DELETE' });
+  if (!r.success) {
+    toast(r.error || tr('couldNotRemovePhoto', language), 'error');
+    return;
+  }
+  if (profilePreviewObjectUrl) {
+    URL.revokeObjectURL(profilePreviewObjectUrl);
+    profilePreviewObjectUrl = '';
+  }
+  const avatarInput = document.getElementById('profile-avatar');
+  const fileInput = document.getElementById('profile-avatar-file');
+  if (avatarInput) avatarInput.value = '';
+  if (fileInput) fileInput.value = '';
+  toast(tr('profilePhotoRemoved', language), 'success');
+  const me = await api('/api/profile/me');
+  if (me.success) {
+    currentUser = me.data;
+    localStorage.setItem('ddas_user', JSON.stringify(currentUser));
+  }
+  loadProfilePage();
 }
 
 async function saveProfileSettings() {
@@ -2859,37 +3004,39 @@ async function loadUserManagement() {
   const tbody = document.getElementById('user-management-body');
   const summary = document.getElementById('user-management-summary');
   const count = document.getElementById('user-management-count');
+  const language = localStorage.getItem('ddas_language') || 'en';
   if (!tbody) return;
 
   if (!isAdmin()) {
-    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p>Admin access required.</p></div></td></tr>';
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>${esc(tr('adminAccessRequired', language))}</p></div></td></tr>`;
     if (summary) summary.innerHTML = '';
     if (count) count.textContent = '';
     return;
   }
 
-  tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p>Loading users...</p></div></td></tr>';
+  applyLanguage(language);
+  tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>${esc(tr('loadingUsers', language))}</p></div></td></tr>`;
   const r = await api('/api/profile/users?limit=500');
   if (!r.success) {
-    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>${esc(r.error || 'Could not load users.')}</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>${esc(r.error || tr('couldNotLoadUsers', language))}</p></div></td></tr>`;
     return;
   }
 
   const users = r.data?.profiles || [];
   const activeUsers = users.filter(u => Number(u.is_active) === 1).length;
   const admins = users.filter(u => normalizeRole(u.role) === 'admin' && Number(u.is_active) === 1).length;
-  if (count) count.textContent = `${users.length} user${users.length === 1 ? '' : 's'}`;
+  if (count) count.textContent = `${users.length} ${tr('users', language)}`;
   if (summary) {
     summary.innerHTML = `
-      <span class="badge badge-info">${users.length} total</span>
-      <span class="badge badge-success">${activeUsers} active</span>
-      <span class="badge badge-warning">${users.length - activeUsers} inactive</span>
-      <span class="badge badge-muted">${admins} admin</span>
+      <span class="badge badge-info">${users.length} ${esc(tr('total', language))}</span>
+      <span class="badge badge-success">${activeUsers} ${esc(tr('active', language))}</span>
+      <span class="badge badge-warning">${users.length - activeUsers} ${esc(tr('inactive', language))}</span>
+      <span class="badge badge-muted">${admins} ${esc(tr('admin', language))}</span>
     `;
   }
 
   if (!users.length) {
-    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p>No users found.</p></div></td></tr>';
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>${esc(tr('noUsersFound', language))}</p></div></td></tr>`;
     return;
   }
 
@@ -2907,18 +3054,18 @@ async function loadUserManagement() {
         </td>
         <td>
           <select class="form-select admin-role-select" onchange="updateManagedUserRole('${esc(user.id)}', this.value)" ${isSelf ? 'disabled title="You cannot change your own role here."' : ''}>
-            <option value="registered" ${role === 'registered' ? 'selected' : ''}>Registered</option>
-            <option value="admin" ${role === 'admin' ? 'selected' : ''}>Admin</option>
+            <option value="registered" ${role === 'registered' ? 'selected' : ''}>${esc(tr('registeredUser', language))}</option>
+            <option value="admin" ${role === 'admin' ? 'selected' : ''}>${esc(tr('administrator', language))}</option>
             <option value="guest" ${role === 'guest' ? 'selected' : ''}>Guest</option>
           </select>
         </td>
         <td>
           <div style="display:flex;align-items:center;gap:10px">
-            <button class="status-toggle ${isActive ? 'active' : ''}" type="button" aria-label="${isActive ? 'Deactivate user' : 'Activate user'}" onclick="toggleManagedUserStatus('${esc(user.id)}', ${isActive})" ${isSelf ? 'disabled title="You cannot deactivate your own account."' : ''}></button>
-            <span class="badge ${isActive ? 'badge-success' : 'badge-danger'}">${isActive ? 'Active' : 'Inactive'}</span>
+            <button class="status-toggle ${isActive ? 'active' : ''}" type="button" aria-label="${esc(isActive ? tr('deactivateUser', language) : tr('activateUser', language))}" onclick="toggleManagedUserStatus('${esc(user.id)}', ${isActive})" ${isSelf ? 'disabled title="You cannot deactivate your own account."' : ''}></button>
+            <span class="badge ${isActive ? 'badge-success' : 'badge-danger'}">${esc(isActive ? tr('active', language) : tr('inactive', language))}</span>
           </div>
         </td>
-        <td class="mono">${user.last_login ? fmtDate(user.last_login) : 'Never'}</td>
+        <td class="mono">${user.last_login ? fmtDate(user.last_login) : esc(tr('never', language))}</td>
         <td class="mono">${user.login_count || 0}</td>
       </tr>
     `;
@@ -3541,7 +3688,7 @@ async function loadAvailableExports() {
 async function downloadFile(filename) {
   const url = `/api/export/download?file=${encodeURIComponent(filename)}`;
   try {
-    const res = await fetch(url, {
+    const res = await fetch(apiUrl(url), {
       headers: { ...(authToken ? { Authorization: 'Bearer ' + authToken } : {}) },
     });
 
