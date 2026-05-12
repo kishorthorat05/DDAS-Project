@@ -713,6 +713,59 @@ tr:hover td { background: rgba(255,255,255,.02); }
 .profile-kv span:first-child { color: var(--text-secondary); }
 .profile-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; justify-content:flex-end; }
 .permission-list { display:flex; gap:6px; flex-wrap:wrap; }
+.user-management-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.user-management-summary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.user-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+}
+.status-toggle {
+  width: 46px;
+  height: 24px;
+  border: 1px solid var(--border-bright);
+  border-radius: 99px;
+  background: var(--bg-raised);
+  padding: 2px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.status-toggle::before {
+  content: '';
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: var(--transition);
+}
+.status-toggle.active {
+  border-color: var(--success);
+  background: rgba(0,229,160,.12);
+}
+.status-toggle.active::before {
+  transform: translateX(20px);
+  background: var(--success);
+}
+.status-toggle:disabled,
+.admin-role-select:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.admin-role-select {
+  min-width: 136px;
+}
 
 .image-viewer {
   position: fixed;
@@ -941,6 +994,12 @@ tr:hover td { background: rgba(255,255,255,.02); }
     <button class="nav-item" data-page="profile" data-role="registered admin" onclick="navigate('profile')">
       <svg class="nav-icon" width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       Profile
+    </button>
+
+    <div class="nav-section" data-role="admin">Admin</div>
+    <button class="nav-item" data-page="admin-users" data-role="admin" onclick="navigate('admin-users')">
+      <svg class="nav-icon" width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      User Management
     </button>
 
     <div class="sidebar-footer">
@@ -1249,6 +1308,39 @@ tr:hover td { background: rgba(255,255,255,.02); }
           <div style="font-size:40px;margin-bottom:16px">⏳</div>
           <div style="font-size:14px">Loading duplicate detector...</div>
         </div>
+      </div>
+    </section>
+
+    <!-- ADMIN USER MANAGEMENT -->
+    <section class="page" id="page-admin-users">
+      <div class="page-header">
+        <div class="page-header-icon" style="color:var(--success)">
+          <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+          <div class="page-title">User Management</div>
+          <div class="page-subtitle">Assign roles and control account access</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="loadUserManagement()" style="margin-left:auto">Refresh</button>
+      </div>
+
+      <div class="user-management-toolbar">
+        <div class="user-management-summary" id="user-management-summary"></div>
+      </div>
+
+      <div class="table-container">
+        <div class="table-header">
+          <span class="table-title">Registered Users</span>
+          <span class="mono" id="user-management-count"></span>
+        </div>
+        <table>
+          <thead><tr>
+            <th>User</th><th>Role</th><th>Status</th><th>Last Login</th><th>Logins</th>
+          </tr></thead>
+          <tbody id="user-management-body">
+            <tr><td colspan="5"><div class="empty-state"><p>Loading users...</p></div></td></tr>
+          </tbody>
+        </table>
       </div>
     </section>
 
@@ -2066,6 +2158,7 @@ function navigate(page) {
   if (page === 'analytics') loadAnalytics();
   if (page === 'export') loadAvailableExports();
   if (page === 'duplicates') loadDuplicateDetector();
+  if (page === 'admin-users') loadUserManagement();
   if (page === 'profile') loadProfilePage();
 }
 
@@ -2651,7 +2744,9 @@ async function loadProfilePage() {
 }
 
 function roleLabel(role) {
-  return role === 'admin' || role === 'administrator' ? tr('administrator') : tr('registeredUser');
+  if (role === 'admin' || role === 'administrator') return tr('administrator');
+  if (role === 'guest') return 'Guest';
+  return tr('registeredUser');
 }
 
 function previewProfileAvatar(input) {
@@ -2759,6 +2854,106 @@ async function saveProfileSettings() {
 // ═════════════════════════════════════════════════════════════
 // EXPORT
 // ═════════════════════════════════════════════════════════════
+// ADMIN USER MANAGEMENT
+async function loadUserManagement() {
+  const tbody = document.getElementById('user-management-body');
+  const summary = document.getElementById('user-management-summary');
+  const count = document.getElementById('user-management-count');
+  if (!tbody) return;
+
+  if (!isAdmin()) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p>Admin access required.</p></div></td></tr>';
+    if (summary) summary.innerHTML = '';
+    if (count) count.textContent = '';
+    return;
+  }
+
+  tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p>Loading users...</p></div></td></tr>';
+  const r = await api('/api/profile/users?limit=500');
+  if (!r.success) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>${esc(r.error || 'Could not load users.')}</p></div></td></tr>`;
+    return;
+  }
+
+  const users = r.data?.profiles || [];
+  const activeUsers = users.filter(u => Number(u.is_active) === 1).length;
+  const admins = users.filter(u => normalizeRole(u.role) === 'admin' && Number(u.is_active) === 1).length;
+  if (count) count.textContent = `${users.length} user${users.length === 1 ? '' : 's'}`;
+  if (summary) {
+    summary.innerHTML = `
+      <span class="badge badge-info">${users.length} total</span>
+      <span class="badge badge-success">${activeUsers} active</span>
+      <span class="badge badge-warning">${users.length - activeUsers} inactive</span>
+      <span class="badge badge-muted">${admins} admin</span>
+    `;
+  }
+
+  if (!users.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p>No users found.</p></div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = users.map(user => {
+    const role = normalizeRole(user.role);
+    const isActive = Number(user.is_active) === 1;
+    const isSelf = user.id === currentUser?.id;
+    return `
+      <tr>
+        <td>
+          <div class="user-cell">
+            <strong>${esc(user.full_name || user.username || 'User')}</strong>
+            <span class="mono">${esc(user.username || '')}${user.email ? ' - ' + esc(user.email) : ''}</span>
+          </div>
+        </td>
+        <td>
+          <select class="form-select admin-role-select" onchange="updateManagedUserRole('${esc(user.id)}', this.value)" ${isSelf ? 'disabled title="You cannot change your own role here."' : ''}>
+            <option value="registered" ${role === 'registered' ? 'selected' : ''}>Registered</option>
+            <option value="admin" ${role === 'admin' ? 'selected' : ''}>Admin</option>
+            <option value="guest" ${role === 'guest' ? 'selected' : ''}>Guest</option>
+          </select>
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button class="status-toggle ${isActive ? 'active' : ''}" type="button" aria-label="${isActive ? 'Deactivate user' : 'Activate user'}" onclick="toggleManagedUserStatus('${esc(user.id)}', ${isActive})" ${isSelf ? 'disabled title="You cannot deactivate your own account."' : ''}></button>
+            <span class="badge ${isActive ? 'badge-success' : 'badge-danger'}">${isActive ? 'Active' : 'Inactive'}</span>
+          </div>
+        </td>
+        <td class="mono">${user.last_login ? fmtDate(user.last_login) : 'Never'}</td>
+        <td class="mono">${user.login_count || 0}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function normalizeRole(role) {
+  if (role === 'administrator') return 'admin';
+  return ['admin', 'registered', 'guest'].includes(role) ? role : 'registered';
+}
+
+async function updateManagedUserRole(userId, role) {
+  const r = await api(`/api/profile/users/${encodeURIComponent(userId)}/role`, {
+    method: 'POST',
+    json: { role }
+  });
+  if (r.success) {
+    toast(r.message || 'User role updated.', 'success');
+  } else {
+    toast(r.error || 'Could not update role.', 'error');
+  }
+  loadUserManagement();
+}
+
+async function toggleManagedUserStatus(userId, isActive) {
+  const endpoint = isActive ? 'suspend' : 'activate';
+  const r = await api(`/api/profile/users/${encodeURIComponent(userId)}/${endpoint}`, { method: 'POST' });
+  if (r.success) {
+    toast(r.message || `User ${isActive ? 'deactivated' : 'activated'}.`, 'success');
+  } else {
+    toast(r.error || 'Could not update user status.', 'error');
+  }
+  loadUserManagement();
+}
+
 async function exportScanResults() {
   const btn = event?.target?.closest('button');
   if (btn) { btn.disabled = true; btn.textContent = 'Creating export...'; }

@@ -195,7 +195,9 @@ def login():
     if not user or not verify_password(password, user["password_hash"]):
         return _err("Invalid credentials.", 401, "INVALID_CREDENTIALS")
 
-    normalized_role = "admin" if user.get("role") in {"admin", "administrator"} else "registered"
+    normalized_role = "admin" if user.get("role") in {"admin", "administrator"} else user.get("role", "registered")
+    if normalized_role not in {"admin", "registered", "guest"}:
+        normalized_role = "registered"
     if user.get("role") != normalized_role:
         with get_db() as conn:
             conn.execute("UPDATE users SET role = ? WHERE id = ?", (normalized_role, user["id"]))
